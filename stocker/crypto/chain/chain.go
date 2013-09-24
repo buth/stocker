@@ -1,4 +1,4 @@
-package crypter
+package chain
 
 import (
 	"bytes"
@@ -12,54 +12,50 @@ import (
 	"io"
 )
 
-type AES struct {
-	key1, key2 []byte
-	block      cipher.Block
+type chain struct {
+	signer []byte
+	block  cipher.Block
 }
 
-func (c *AES) Load(keytext string) error {
+// New creates and returns a new chain.chain. The key argument should be the
+// combined AES-256 and SHA-256 keys (in that order) for a total length of 288
+// bytes.
+func New(key []byte) (*chain, error) {
 
-	// Decode the keytext from base 64.
-	keybytes, err := base64.StdEncoding.DecodeString(keytext)
+	// Create the cipher. The cipher itself only stores an expanded version of
+	// the key, so there is no need to copy it.
+	block, err := aes.NewCipher(key[:32])
 	if err != nil {
-		return err
+		return &chain{}, err
 	}
 
-	// Check that it has the right number of bytes.
-	if len(keybytes) != 288 {
-		return errors.New("wrong number of bytes in key")
-	}
+	// The new chain object needs its own copy of the signing key.
+	signer := make([]byte, 256)
+	copy(signer, key[32:])
 
-	// Create the cipher.
-	block, err := aes.NewCipher(c.key1)
-	if err != nil {
-		return err
-	}
-
-	c.key1 = keybytes[:32]
-	c.key2 = keybytes[32:]
-	c.block = block
-
-	return nil
+	return &chain{signer: signer, block: block}, nil
 }
 
-func (c *AES) hmac(message []byte) []byte {
-	mac := hmac.New(sha256.New, c.key2)
+// hmac computes and returns SHA-256 HMAC sum using the signing key.
+func (c *chain) hmac(message []byte) []byte {
+	mac := hmac.New(sha256.New, c.signer)
 	mac.Write(message)
 	return mac.Sum(nil)
 }
 
-func (c *AES) encode(plainbytes []byte) ([]byte, error) {
+// encrypt encrypts a slice of bytes using the AES-256 cipher in CBC mode and
+// returns an usigned sice of cipher bytes that begins with the IV.
+func (c *chain) encrypt(plainbytes []byte) ([]byte, error) {
 
 	// Initialize size with room for the IV.
 	size := aes.BlockSize + len(plainbytes)
 
-	// Add padding if necessary.
+	// Add extra padding if the size is not a multiple of the block size.
 	if extra := len(plainbytes) % aes.BlockSize; extra != 0 {
 		size += aes.BlockSize - extra
 	}
 
-	// Create the cipher text slice and copy in the plainbytes.
+	// Create the cipherbytes slice and copy in the plainbytes.
 	cipherbytes := make([]byte, size)
 	copy(cipherbytes[aes.BlockSize:], plainbytes)
 
@@ -76,16 +72,20 @@ func (c *AES) encode(plainbytes []byte) ([]byte, error) {
 	return cipherbytes, nil
 }
 
-func (c *AES) decode(cipherbytes []byte) ([]byte, error) {
+// decrypt decrypts a slice of cipherbytes using the AES-256 cipher in CBC
+// mode and returns a slice of plain bytes. The first block of the cipherbytes
+// argument is expected to be the IV. It does not verify or expect a signature
+// to be present in the cipherbytes argument.
+func (c *chain) decrypt(cipherbytes []byte) ([]byte, error) {
 
 	// We need an IV and at least one block of cipherbytes to proceed.
 	if len(cipherbytes) < aes.BlockSize*2 {
-		return []byte{}, errors.New("cipherbytes too short")
+		return []byte{}, errors.New("cipherbytes is too short")
 	}
 
 	// CBC mode always works in whole blocks.
 	if len(cipherbytes)%aes.BlockSize != 0 {
-		return []byte{}, errors.New("ciphertext is not a multiple of the block size")
+		return []byte{}, errors.New("cipherbytes is not a multiple of the block size")
 	}
 
 	// IV is the first BlockSize bytes of the message.
@@ -102,13 +102,16 @@ func (c *AES) decode(cipherbytes []byte) ([]byte, error) {
 	return plainbytes, nil
 }
 
-func (c *AES) EncodeString(plaintext string) (string, error) {
+// EncryptString converts plaintext to signed, base 64 encoded ciphertext by
+// encrypting the plaintext using AES-256 and prepending a HMAC SHA-256
+// signature.
+func (c *chain) EncryptString(plaintext string) (string, error) {
 
 	// Convert the string to bytes
 	plainbytes := []byte(plaintext)
 
 	// Encoded the unencrypted bytes.
-	cipherbytes, err := c.encode(plainbytes)
+	cipherbytes, err := c.encrypt(plainbytes)
 	if err != nil {
 		return "", err
 	}
@@ -125,7 +128,10 @@ func (c *AES) EncodeString(plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(messagebytes), nil
 }
 
-func (c *AES) DecodeString(message string) (string, error) {
+// DecryptString converts signed, base 64 encoded ciphertext to plaintext by
+// first validating a prepended HMAC SHA-256 signature and then decrypting the
+// remaining message using AES-256.
+func (c *chain) DecryptString(message string) (string, error) {
 
 	// Decode the base 64 string.
 	messagebytes, err := base64.StdEncoding.DecodeString(message)
@@ -139,7 +145,7 @@ func (c *AES) DecodeString(message string) (string, error) {
 	}
 
 	// Decode the encrypted bytes.
-	plainbytes, err := c.decode(messagebytes[32:])
+	plainbytes, err := c.decrypt(messagebytes[32:])
 	if err != nil {
 		return "", err
 	}
