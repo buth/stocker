@@ -12,9 +12,19 @@ import (
 	"io"
 )
 
+// A chain is an encrypter/decrypter set to use a specific encryption key (for
+// AES-256 in CBC mode) and signing key (for HMAC SHA-256) combination.
 type chain struct {
 	signer []byte
 	block  cipher.Block
+}
+
+// GenerateKey creates and returns a new random key that can be used to create
+// a new chain.
+func GenerateKey() []byte {
+	key := make([]byte, 288)
+	io.ReadFull(rand.Reader, key)
+	return key
 }
 
 // New creates and returns a new chain.chain. The key argument should be the
@@ -107,16 +117,16 @@ func (c *chain) decrypt(cipherbytes []byte) ([]byte, error) {
 // signature.
 func (c *chain) EncryptString(plaintext string) (string, error) {
 
-	// Convert the string to bytes
+	// Convert the string to a slice of bytes.
 	plainbytes := []byte(plaintext)
 
-	// Encoded the unencrypted bytes.
+	// Encrypt the slice of plainbytes, producing cipherbytes.
 	cipherbytes, err := c.encrypt(plainbytes)
 	if err != nil {
 		return "", err
 	}
 
-	// Sign the cipherbytes.
+	// Get the signatrue for the cipherbytes.
 	hmacbytes := c.hmac(cipherbytes)
 
 	// Copy all the bytes into a single byte string.

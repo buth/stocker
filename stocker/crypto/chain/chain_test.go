@@ -1,17 +1,12 @@
 package chain
 
 import (
-	"crypto/rand"
-	// "encoding/base64"
-	"io"
 	"testing"
 )
 
 func TestEncodeString(t *testing.T) {
 
-	key := make([]byte, 288)
-	io.ReadFull(rand.Reader, key)
-	c, _ := New(key)
+	c, _ := New(GenerateKey())
 
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
 
@@ -29,9 +24,7 @@ func TestEncodeString(t *testing.T) {
 func BenchmarkEncodeString(b *testing.B) {
 	b.StopTimer()
 
-	key := make([]byte, 288)
-	io.ReadFull(rand.Reader, key)
-	c, _ := New(key)
+	c, _ := New(GenerateKey())
 
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
 
@@ -48,9 +41,7 @@ func BenchmarkEncodeStringCold(b *testing.B) {
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
 
 	for i := 0; i < b.N; i++ {
-		key := make([]byte, 288)
-		io.ReadFull(rand.Reader, key)
-		c, _ := New(key)
+		c, _ := New(GenerateKey())
 		b.StartTimer()
 		c.EncryptString(originaltext)
 		b.StopTimer()
