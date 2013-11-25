@@ -1,4 +1,4 @@
-package redisc
+package backend
 
 import (
 	"crypto/rand"
