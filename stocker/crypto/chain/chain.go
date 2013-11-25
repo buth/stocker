@@ -32,6 +32,11 @@ func GenerateKey() []byte {
 // bytes.
 func New(key []byte) (*chain, error) {
 
+	// If no key is provided, generate one.
+	if len(key) == 0 {
+		key = GenerateKey()
+	}
+
 	// Create the cipher. The cipher itself only stores an expanded version of
 	// the key, so there is no need to copy it.
 	block, err := aes.NewCipher(key[:32])
