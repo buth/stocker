@@ -5,7 +5,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	// "github.com/buth/stocker/stocker/backend"
+	"github.com/buth/stocker/stocker/backend"
+	"github.com/buth/stocker/stocker/backend/redis"
 	"github.com/buth/stocker/stocker/crypto"
 	"github.com/buth/stocker/stocker/crypto/chain"
 	"log"
@@ -26,7 +27,7 @@ func generateKey() []byte {
 	return []byte{}
 }
 
-// crypter instantiates a new crypter of the chosen type using a new key or
+// newCrypter instantiates a new crypter of the chosen type using a new key or
 // the base 64 encoded key present in the file at config.Secret.
 func newCrypter(key []byte) (crypto.Crypter, error) {
 	switch config.Crypter {
@@ -40,9 +41,22 @@ func newCrypter(key []byte) (crypto.Crypter, error) {
 	return nil, errors.New("no crypter selected")
 }
 
+// newBackend instantiates a new backend of the chosen type using the
+// connection information in config.BackendConnectionType and
+// config.BackendConnectionString.
+func newBackend() (backend.Backend, error) {
+	switch config.Backend {
+	case "redis":
+		newRedisBackend := redis.New(config.BackendConnectionType, config.BackendConnectionString)
+		return newRedisBackend, nil
+	}
+	return nil, errors.New("no backend selected")
+}
+
 func init() {
 	flag.BoolVar(&config.GenerateKey, "k", false, "generate key")
 	flag.BoolVar(&config.RunDaemon, "d", false, "run daemon")
+	flag.StringVar(&config.Crypter, "g", "default", "group to use")
 	flag.StringVar(&config.Crypter, "crypter", "chain", "crypter to use")
 	flag.StringVar(&config.SecretFilepath, "secret", "", "path to encryption secret")
 	flag.StringVar(&config.Backend, "backend", "redis", "backend to use")
@@ -78,5 +92,10 @@ func main() {
 	}
 
 	// Attempt to load a backend.
-	log.Println(crypter)
+	backend, err := newBackend()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	log.Println(crypter, backend)
 }
