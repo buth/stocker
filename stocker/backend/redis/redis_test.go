@@ -1,4 +1,4 @@
-package backend
+package redis
 
 import (
 	"crypto/rand"
