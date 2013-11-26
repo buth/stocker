@@ -151,15 +151,14 @@ func (r *redisBackend) Subscribe(key string, process func(string, string) error)
 		switch v := pconn.Receive().(type) {
 		case redis.PMessage:
 
-			process(v.Channel, string(v.Data))
+			err := process(v.Channel, string(v.Data))
+			if err != nil {
+				return err
+			}
 		case error:
 			return v
 		}
 	}
 
 	return nil
-}
-
-func (r *redisBackend) Unsubscribe(key string) error {
-	return r.Publish(key, "")
 }
