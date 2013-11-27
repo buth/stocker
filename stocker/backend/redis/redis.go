@@ -17,6 +17,7 @@ type redisBackend struct {
 	connectionType, connectionString string
 	pool                             *redis.Pool
 	sem                              chan bool
+	subscriptions                    map[string]*redis.PubSubConn
 }
 
 func New(connectionType, connectionString string) *redisBackend {
@@ -26,6 +27,9 @@ func New(connectionType, connectionString string) *redisBackend {
 	// Build the underlying pool setting the maximum size to the number of
 	// allowed concurrent connections.
 	r.pool = redis.NewPool(r.dial, concurrentConnections)
+
+	// Subscriptions.
+	r.subscriptions = make(map[string]*redis.PubSubConn)
 
 	// Preload the semaphore.
 	r.sem = make(chan bool, concurrentConnections)
@@ -142,23 +146,40 @@ func (r *redisBackend) Subscribe(key string, process func(string, string) error)
 	}
 
 	// Use the redis Pub/Sub wrapper.
-	pconn := redis.PubSubConn{conn}
-	defer pconn.Close()
-
-	// Subscribe using the prefixed key as a pattern.
-	pconn.PSubscribe(prefixedKey)
-	for {
-		switch v := pconn.Receive().(type) {
-		case redis.PMessage:
-
-			err := process(v.Channel, string(v.Data))
-			if err != nil {
-				return err
-			}
-		case error:
-			return v
-		}
+	r.subscriptions[key] = &redis.PubSubConn{conn}
+	if err = r.subscriptions[key].PSubscribe(prefixedKey); err != nil {
+		return err
 	}
 
+	go func(pconn *redis.PubSubConn) {
+
+		defer pconn.Close()
+		for {
+			switch v := pconn.Receive().(type) {
+			case redis.PMessage:
+
+				err := process(v.Channel, string(v.Data))
+				if err != nil {
+					log.Println(err)
+					return
+				}
+			case redis.Subscription:
+				if v.Kind == "punsubscribe" {
+					return
+				}
+			case error:
+				return
+			}
+		}
+	}(r.subscriptions[key])
+
+	// The only returnable error was with the subscription.
 	return nil
+}
+
+func (r *redisBackend) Unsubscribe(key string) error {
+	prefixedKey := prefixKey(key)
+
+	// Unsubscribe and return any error.
+	return r.subscriptions[key].PUnsubscribe(prefixedKey)
 }

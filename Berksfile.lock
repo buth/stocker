@@ -13,6 +13,9 @@
     "redisio": {
       "locked_version": "1.7.0"
     },
+    "sqlite": {
+      "locked_version": "1.0.0"
+    },
     "apt": {
       "locked_version": "2.3.0"
     },

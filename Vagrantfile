@@ -23,7 +23,8 @@ Vagrant.configure("2") do |config|
         version: '1.1.2',
         packages: [
           'github.com/garyburd/redigo/redis',
-          'github.com/buth/funnel'
+          'github.com/buth/funnel',
+          'github.com/dotcloud/docker'
         ]
       }
     }
@@ -32,6 +33,7 @@ Vagrant.configure("2") do |config|
       'recipe[baseline]',
       'recipe[redisio::install]',
       'recipe[redisio::enable]',
+      'recipe[sqlite]',
       'recipe[golang::packages]'
     ]
   end

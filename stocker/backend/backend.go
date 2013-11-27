@@ -6,5 +6,6 @@ type Backend interface {
 	SetWithTTL(key, value string, ttl int) error
 	Remove(key string) error
 	Publish(key, message string) error
-	Subscribe(key string, process func(string, string) error) error
+	Subscribe(key string, process func(channel, message string) error) error
+	Unsubscribe(key string) error
 }
