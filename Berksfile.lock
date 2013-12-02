@@ -6,9 +6,7 @@
       "ref": "9e960b98bf9457808d9af78fbb36300b2dc2502e"
     },
     "golang": {
-      "locked_version": "1.1.2",
-      "git": "git@github.com:buth/chef-golang.git",
-      "ref": "f9e8588b02aaea4259cac01c165f61390814f2c1"
+      "locked_version": "1.2.0"
     },
     "redisio": {
       "locked_version": "1.7.0"
