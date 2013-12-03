@@ -9,10 +9,6 @@ const (
 	concurrentConnections int = 2
 )
 
-func prefixKey(key string) string {
-	return "stocker:" + key
-}
-
 type redisBackend struct {
 	connectionType, connectionString string
 	pool                             *redis.Pool
@@ -59,7 +55,6 @@ func (r *redisBackend) p() {
 }
 
 func (r *redisBackend) Get(key string) (string, error) {
-	prefixedKey := prefixKey(key)
 
 	// Wait for a signal from the semaphore and then pull a new connection from
 	// the pool. Defer signalling the semaphore and closing the connection.
@@ -69,11 +64,10 @@ func (r *redisBackend) Get(key string) (string, error) {
 	defer conn.Close()
 
 	// Return the results of the GET command.
-	return redis.String(conn.Do("GET", prefixedKey))
+	return redis.String(conn.Do("GET", key))
 }
 
 func (r *redisBackend) Set(key, value string) error {
-	prefixedKey := prefixKey(key)
 
 	// Wait for a signal from the semaphore and then pull a new connection from
 	// the pool. Defer signalling the semaphore and closing the connection.
@@ -83,12 +77,11 @@ func (r *redisBackend) Set(key, value string) error {
 	defer conn.Close()
 
 	// Run the SET command and return any error.
-	_, err := conn.Do("SET", prefixedKey, value)
+	_, err := conn.Do("SET", key, value)
 	return err
 }
 
 func (r *redisBackend) SetWithTTL(key, value string, ttl int) error {
-	prefixedKey := prefixKey(key)
 
 	// Wait for a signal from the semaphore and then pull a new connection from
 	// the pool. Defer signalling the semaphore and closing the connection.
@@ -100,14 +93,13 @@ func (r *redisBackend) SetWithTTL(key, value string, ttl int) error {
 	// Run the SET and EXPIRE commands as a single transaaction and return any
 	// error.
 	conn.Send("MULTI")
-	conn.Send("SET", prefixedKey, value)
-	conn.Send("EXPIRE", prefixedKey, ttl)
+	conn.Send("SET", key, value)
+	conn.Send("EXPIRE", key, ttl)
 	_, err := conn.Do("EXEC")
 	return err
 }
 
 func (r *redisBackend) Remove(key string) error {
-	prefixedKey := prefixKey(key)
 
 	// Wait for a signal from the semaphore and then pull a new connection from
 	// the pool. Defer signalling the semaphore and closing the connection.
@@ -117,12 +109,11 @@ func (r *redisBackend) Remove(key string) error {
 	defer conn.Close()
 
 	// Run the DEL command and return any error.
-	_, err := conn.Do("DEL", prefixedKey)
+	_, err := conn.Do("DEL", key)
 	return err
 }
 
 func (r *redisBackend) Publish(key, message string) error {
-	prefixedKey := prefixKey(key)
 
 	// Wait for a signal from the semaphore and then pull a new connection from
 	// the pool. Defer signalling the semaphore and closing the connection.
@@ -132,12 +123,11 @@ func (r *redisBackend) Publish(key, message string) error {
 	defer conn.Close()
 
 	// Run the PUBLISH command and return any error.
-	_, err := conn.Do("PUBLISH", prefixedKey, message)
+	_, err := conn.Do("PUBLISH", key, message)
 	return err
 }
 
 func (r *redisBackend) Subscribe(key string, process func(string, string) error) error {
-	prefixedKey := prefixKey(key)
 
 	// Don't pull these connections from the pool, as they will remain open.
 	conn, err := r.dial()
@@ -147,7 +137,7 @@ func (r *redisBackend) Subscribe(key string, process func(string, string) error)
 
 	// Use the redis Pub/Sub wrapper.
 	r.subscriptions[key] = &redis.PubSubConn{conn}
-	if err = r.subscriptions[key].PSubscribe(prefixedKey); err != nil {
+	if err = r.subscriptions[key].PSubscribe(key); err != nil {
 		return err
 	}
 
@@ -178,8 +168,7 @@ func (r *redisBackend) Subscribe(key string, process func(string, string) error)
 }
 
 func (r *redisBackend) Unsubscribe(key string) error {
-	prefixedKey := prefixKey(key)
 
 	// Unsubscribe and return any error.
-	return r.subscriptions[key].PUnsubscribe(prefixedKey)
+	return r.subscriptions[key].PUnsubscribe(key)
 }
