@@ -32,7 +32,8 @@ Vagrant.configure("2") do |config|
       'recipe[baseline]',
       'recipe[redisio::install]',
       'recipe[redisio::enable]',
-      'recipe[sqlite]',
+      'recipe[sqlite3]',
+      'recipe[lvm2]',
       'recipe[golang::packages]'
     ]
   end
