@@ -141,27 +141,24 @@ func (r *redisBackend) Subscribe(key string, process func(string, string) error)
 		return err
 	}
 
-	go func(pconn *redis.PubSubConn) {
+	defer r.subscriptions[key].Close()
 
-		defer pconn.Close()
-		for {
-			switch v := pconn.Receive().(type) {
-			case redis.PMessage:
+	for {
+		switch v := r.subscriptions[key].Receive().(type) {
+		case redis.PMessage:
 
-				err := process(v.Channel, string(v.Data))
-				if err != nil {
-					log.Println(err)
-					return
-				}
-			case redis.Subscription:
-				if v.Kind == "punsubscribe" {
-					return
-				}
-			case error:
-				return
+			err := process(v.Channel, string(v.Data))
+			if err != nil {
+				return err
 			}
+		case redis.Subscription:
+			if v.Kind == "punsubscribe" {
+				return nil
+			}
+		case error:
+			return v
 		}
-	}(r.subscriptions[key])
+	}
 
 	// The only returnable error was with the subscription.
 	return nil
@@ -171,4 +168,31 @@ func (r *redisBackend) Unsubscribe(key string) error {
 
 	// Unsubscribe and return any error.
 	return r.subscriptions[key].PUnsubscribe(key)
+}
+
+func (r *redisBackend) Add(key, value string) error {
+
+	// Wait for a signal from the semaphore and then pull a new connection from
+	// the pool. Defer signalling the semaphore and closing the connection.
+	r.p()
+	defer r.v()
+	conn := r.pool.Get()
+	defer conn.Close()
+
+	// Run the SET command and return any error.
+	_, err := conn.Do("SADD", key, value)
+	return err
+}
+
+func (r *redisBackend) List(key string) ([]string, error) {
+
+	// Wait for a signal from the semaphore and then pull a new connection from
+	// the pool. Defer signalling the semaphore and closing the connection.
+	r.p()
+	defer r.v()
+	conn := r.pool.Get()
+	defer conn.Close()
+
+	// Run the SET command and return any error.
+	return redis.Strings(conn.Do("SMEMBERS", key))
 }

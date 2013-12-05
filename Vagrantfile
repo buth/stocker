@@ -23,7 +23,7 @@ Vagrant.configure("2") do |config|
         version: '1.2',
         packages: [
           'github.com/garyburd/redigo/redis',
-          'github.com/dotcloud/docker'
+          'github.com/fsouza/go-dockerclient'
         ]
       }
     }
