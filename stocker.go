@@ -101,11 +101,11 @@ func main() {
 			log.Fatal("daemon requires a groupname!")
 		}
 
-		if s, err := stocker.New(flag.Arg(1), b, c); err != nil {
-
+		if s, err := stocker.NewGroup(flag.Arg(1), b, c); err != nil {
 			log.Fatal(err)
 		} else {
-			log.Println(s.Run())
+			log.Println("Starting daemon")
+			log.Panic(s.Run())
 		}
 
 	case "run":
