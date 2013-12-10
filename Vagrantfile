@@ -6,6 +6,7 @@ Vagrant.configure("2") do |config|
   config.vm.hostname = "stocker"
   config.vm.box = "baseline-precise"
   config.vm.box_url = "https://s3.amazonaws.com/int-ops/baseline/vagrant/virtualbox/precise.box"
+  config.vm.synced_folder "./", "/opt/go/src/github.com/buth/stocker"
 
   config.berkshelf.berksfile_path = "./Berksfile"
   config.berkshelf.enabled = true
