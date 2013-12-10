@@ -35,7 +35,7 @@ func NewGroup(name string, b backend.Backend, c crypto.Crypter) (*group, error) 
 		g.client = client
 	}
 
-	names, err := g.backend.List(backend.Key("conf", g.name, "resources"))
+	names, err := g.backend.Members(backend.Key("conf", g.name, "resources"))
 	if err != nil {
 		return g, err
 	}

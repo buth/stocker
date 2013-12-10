@@ -179,9 +179,36 @@ func (r *redisBackend) Add(key, value string) error {
 	conn := r.pool.Get()
 	defer conn.Close()
 
-	// Run the SET command and return any error.
+	// Run the SADD command and return any error.
 	_, err := conn.Do("SADD", key, value)
 	return err
+}
+
+func (r *redisBackend) Push(key, value string) error {
+
+	// Wait for a signal from the semaphore and then pull a new connection from
+	// the pool. Defer signalling the semaphore and closing the connection.
+	r.p()
+	defer r.v()
+	conn := r.pool.Get()
+	defer conn.Close()
+
+	// Run the RPUSH command and return any error.
+	_, err := conn.Do("RPUSH", key, value)
+	return err
+}
+
+func (r *redisBackend) Members(key string) ([]string, error) {
+
+	// Wait for a signal from the semaphore and then pull a new connection from
+	// the pool. Defer signalling the semaphore and closing the connection.
+	r.p()
+	defer r.v()
+	conn := r.pool.Get()
+	defer conn.Close()
+
+	// Run the SET command and return any error.
+	return redis.Strings(conn.Do("SMEMBERS", key))
 }
 
 func (r *redisBackend) List(key string) ([]string, error) {
@@ -194,5 +221,5 @@ func (r *redisBackend) List(key string) ([]string, error) {
 	defer conn.Close()
 
 	// Run the SET command and return any error.
-	return redis.Strings(conn.Do("SMEMBERS", key))
+	return redis.Strings(conn.Do("LRANGE", key, "0", "-1"))
 }

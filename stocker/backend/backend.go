@@ -8,12 +8,14 @@ type Backend interface {
 	Get(key string) (string, error)
 	Set(key, value string) error
 	SetWithTTL(key, value string, ttl int) error
+	Push(key, value string) error
 	Add(key, value string) error
-	List(key string) ([]string, error)
+	Members(key string) ([]string, error)
 	Remove(key string) error
 	Publish(key, message string) error
 	Subscribe(pattern string, process func(key, message string) error) error
 	Unsubscribe(key string) error
+	List(key string) ([]string, error)
 }
 
 func Key(components ...string) string {
