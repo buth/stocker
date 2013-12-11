@@ -1,24 +1,26 @@
 package stocker
 
 import (
+	"bytes"
 	"errors"
 	"github.com/buth/stocker/stocker/backend"
 	"github.com/buth/stocker/stocker/crypto"
 	"github.com/dotcloud/docker"
 	dockerclient "github.com/fsouza/go-dockerclient"
 	"log"
-	"os/exec"
+	"net"
+	"os"
 	"strings"
 	"sync"
 )
 
 type group struct {
-	name        string
-	resourcesMu sync.Mutex
-	resources   map[string]*sync.Mutex
-	backend     backend.Backend
-	crypter     crypto.Crypter
-	client      *dockerclient.Client
+	name                 string
+	resourcesMu, proxyMu sync.Mutex
+	resources            map[string]*sync.Mutex
+	backend              backend.Backend
+	crypter              crypto.Crypter
+	client               *dockerclient.Client
 }
 
 func NewGroup(name string, b backend.Backend, c crypto.Crypter) (*group, error) {
@@ -76,18 +78,12 @@ func (g *group) reloadResource(name string) error {
 		return err
 	}
 
-	// TODO: Replace this hack with the client code that follows it.
-	if err := exec.Command("docker", "pull", config.Image).Run(); err != nil {
+	// Pull any updates to the underlying image. Pass an empty buffer because
+	// we're not really concerned with getting progress updates.
+	log.Printf("i\t%s\t%s\tPulling updates to image %s\n", g.name, name, config.Image)
+	if err := g.client.PullImage(dockerclient.PullImageOptions{Repository: config.Image}, &bytes.Buffer{}); err != nil {
 		return err
 	}
-
-	// This is the prefered method, but it isn't working at the moment because
-	// the client does not support this operation when using unix socket
-	// connectiong.
-
-	// if err := c.client.PullImage(dockerclient.PullImageOptions{Repository: config.Image}, nil); err != nil {
-	//  return err
-	// }
 
 	// Check the current status of the container that corresponds to this
 	// resource, using the resouce name as the container ID.
@@ -158,6 +154,40 @@ func (g *group) reloadResource(name string) error {
 	if err := g.client.StartContainer(name, host); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func (g *group) updateProxy() error {
+
+	// Only one process should be updating the proxy at a time.
+	g.proxyMu.Lock()
+	defer g.proxyMu.Unlock()
+
+	// It's possible that we can assume that this information will not change
+	// during a run, but for now it's fine to just grab it every time.
+
+	localhost, err := os.Hostname()
+	if err != nil {
+		return err
+	}
+
+	ips, err := net.LookupHost(localhost)
+	if err != nil {
+		return err
+	}
+
+	containers, err := g.client.ListContainers(dockerclient.ListContainersOptions{})
+	if err != nil {
+		return err
+	}
+
+	for _, container := range containers {
+
+		log.Println(container)
+	}
+
+	log.Println(ips)
 
 	return nil
 }
