@@ -10,12 +10,18 @@ func TestEncodeString(t *testing.T) {
 
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
 
-	ciphertext, _ := c.EncryptString(originaltext)
+	ciphertext, err := c.EncryptString(originaltext)
+	if err != nil {
+		t.Error(err)
+	}
 	if ciphertext == originaltext {
-		t.Errorf("Encoding the text didn't work!")
+		t.Error("Encoding the text didn't work!")
 	}
 
-	plaintext, _ := c.DecryptString(ciphertext)
+	plaintext, err := c.DecryptString(ciphertext)
+	if err != nil {
+		t.Error(err)
+	}
 	if plaintext != originaltext {
 		t.Errorf("\n%X\n%X\nDecoded text did not match!", originaltext, plaintext)
 	}
@@ -24,7 +30,10 @@ func TestEncodeString(t *testing.T) {
 func BenchmarkEncodeString(b *testing.B) {
 	b.StopTimer()
 
-	c, _ := New(GenerateKey())
+	c, err := New(GenerateKey())
+	if err != nil {
+		b.Error(err)
+	}
 
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
 
@@ -41,7 +50,10 @@ func BenchmarkEncodeStringCold(b *testing.B) {
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
 
 	for i := 0; i < b.N; i++ {
-		c, _ := New(GenerateKey())
+		c, err := New(GenerateKey())
+		if err != nil {
+			b.Error(err)
+		}
 		b.StartTimer()
 		c.EncryptString(originaltext)
 		b.StopTimer()
