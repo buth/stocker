@@ -1,16 +1,20 @@
 package main
 
 import (
+	// "bufio"
+	"code.google.com/p/gopass"
 	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/buth/stocker/stocker"
 	"github.com/buth/stocker/stocker/backend"
 	"github.com/buth/stocker/stocker/backend/redis"
 	"github.com/buth/stocker/stocker/crypto"
 	"github.com/buth/stocker/stocker/crypto/chain"
+	"github.com/dotcloud/docker/pkg/sysinfo"
+	"github.com/dotcloud/docker/runconfig"
 	"log"
+	"os"
 	"strings"
 )
 
@@ -95,18 +99,31 @@ func main() {
 	// What are we doing here?
 	switch flag.Arg(0) {
 
-	case "daemon":
+	case "set":
 
-		if flag.NArg() < 2 {
-			log.Fatal("daemon requires a groupname!")
-		}
+		prefix := flag.Arg(1)
+		variable := flag.Arg(2)
 
-		if s, err := stocker.NewGroup(flag.Arg(1), b, c); err != nil {
+		value, err := gopass.GetPass(fmt.Sprintf("%s=", flag.Arg(2)))
+		if err != nil {
 			log.Fatal(err)
-		} else {
-			log.Println("Starting daemon")
-			log.Panic(s.Run())
 		}
+
+		fmt.Println(value)
+
+		cryptedValue, err := c.EncryptString(value)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Println(cryptedValue)
+
+		key := fmt.Sprintf("stocker/%s/env/%s", prefix, variable)
+		listener := fmt.Sprintf("stocker/%s/signal/%s", prefix, variable)
+
+		// Set the key and notify any listeners.
+		b.Set(key, cryptedValue)
+		b.Publish(listener, cryptedValue)
 
 	case "run":
 
@@ -114,24 +131,67 @@ func main() {
 			log.Fatal("run requires a group and resource name!")
 		}
 
-		group := flag.Arg(1)
-		name := flag.Arg(2)
-		message := strings.Join(flag.Args()[3:], " ")
+		log.Println(c, b)
 
-		// Save the new configuration.
-		if err := b.Set(backend.Key("conf", group, "resource", name), message); err != nil {
-			log.Fatal(err)
+		prefix := flag.Arg(1)
+
+		config, hostConfig, _, err := runconfig.Parse(flag.Args()[2:], sysinfo.New(true)) //(*Config, *HostConfig, *flag.FlagSet, error)
+
+		log.Println(config, hostConfig, err)
+
+		log.Println(config.Image)
+
+		log.Println(config.ExposedPorts)
+
+		log.Println(config.Cmd)
+
+		log.Println(config.Env)
+
+		processedEnv := make([]string, len(config.Env))
+
+		for i, env := range config.Env {
+
+			components := strings.Split(env, "=")
+			variable := components[0]
+			value := components[1]
+
+			if value != "" {
+
+				// A value was specified explicitly on the command line, so
+				// let's just use that.
+				processedEnv[i] = env
+			} else if osEnvValue := os.Getenv(variable); osEnvValue != "" {
+
+				// A value was available in the environment.
+				processedEnv[i] = fmt.Sprintf("%s=%s", variable, osEnvValue)
+			} else {
+
+				// No value was given or available in the evironment so let's
+				// assume that we should try to pull a secure value from the
+				// store.
+
+				key := fmt.Sprintf("stocker/%s/env/%s", prefix, variable)
+				// listener := fmt.Sprintf("stocker/%s/signal/%s", prefix, variable)
+
+				cryptedValue, err := b.Get(key)
+				if err != nil {
+					log.Println(err)
+					// handle
+				}
+
+				decryptedValue, err := c.DecryptString(cryptedValue)
+				if err != nil {
+					log.Println(err)
+					// handle
+				}
+
+				processedEnv[i] = fmt.Sprintf("%s=%s", variable, decryptedValue)
+			}
 		}
 
-		// Add the resource to the list for this group.
-		if err := b.Add(backend.Key("conf", group, "resources"), name); err != nil {
-			log.Fatal(err)
-		}
+		config.Env = processedEnv
 
-		// Signal listeners for this group to reload the resource.
-		if err := b.Publish(backend.Key("cast", group, name), "reload"); err != nil {
-			log.Fatal(err)
-		}
+		fmt.Println(config.Env)
 
 	case "key":
 		fmt.Println(base64.StdEncoding.EncodeToString(key))
