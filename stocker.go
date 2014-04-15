@@ -7,10 +7,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/buth/stocker/crypto"
 	"github.com/buth/stocker/stocker/backend"
 	"github.com/buth/stocker/stocker/backend/redis"
-	"github.com/buth/stocker/stocker/crypto"
-	"github.com/buth/stocker/stocker/crypto/chain"
 	"github.com/dotcloud/docker/pkg/sysinfo"
 	"github.com/dotcloud/docker/runconfig"
 	"log"
@@ -20,30 +19,6 @@ import (
 
 var config struct {
 	Group, SecretFilepath, Crypter, Backend, BackendConnectionType, BackendConnectionString string
-}
-
-// genereateKey creates and returns a new key for the chosen crypter as a
-// slice of bytes.
-func generateKey() []byte {
-	switch config.Crypter {
-	case "chain":
-		return chain.GenerateKey()
-	}
-	return []byte{}
-}
-
-// newCrypter instantiates a new crypter of the chosen type using a new key or
-// the base 64 encoded key present in the file at config.Secret.
-func newCrypter(key []byte) (crypto.Crypter, error) {
-	switch config.Crypter {
-	case "chain":
-		newChain, err := chain.New(key)
-		if err != nil {
-			return nil, err
-		}
-		return newChain, nil
-	}
-	return nil, errors.New("no crypter selected")
 }
 
 // newBackend instantiates a new backend of the chosen type using the
@@ -60,7 +35,6 @@ func newBackend() (backend.Backend, error) {
 
 func init() {
 
-	flag.StringVar(&config.Crypter, "stocker-crypter", "chain", "crypter to use")
 	flag.StringVar(&config.SecretFilepath, "stocker-secret", "", "path to encryption secret")
 	flag.StringVar(&config.Backend, "stocker-backend", "redis", "backend to use")
 	flag.StringVar(&config.BackendConnectionType, "stocker-backend-connection-type", "tcp", "backend connection type")
@@ -75,17 +49,17 @@ func main() {
 
 	// Check if we should try to load a key from a file on disk.
 	if config.SecretFilepath != "" {
-		if keyFromFile, err := crypto.KeyFromFile(config.SecretFilepath); err != nil {
+		if keyFromFile, err := crypto.NewKeyFromFile(config.SecretFilepath); err != nil {
 			log.Fatalln(err)
 		} else {
 			key = keyFromFile
 		}
 	} else {
-		key = generateKey()
+		key = crypto.NewKey()
 	}
 
 	// Attempt to load a crypter.
-	c, err := newCrypter(key)
+	c, err := crypto.NewCrypter(key)
 	if err != nil {
 		log.Fatalln(err)
 	}
