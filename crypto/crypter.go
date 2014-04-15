@@ -14,7 +14,7 @@ import (
 
 // A Crypter represents an encrypter/decrypter set to use a specific
 // encryption key (for AES-256 in CBC mode) and signing key (for HMAC SHA-256)
-// combination.
+// combination. Encrypted data is represented as a base-64 string.
 type Crypter interface {
 	EncryptString(plaintext string) (message string, err error)
 	DecryptString(message string) (plaintext string, err error)

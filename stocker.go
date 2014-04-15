@@ -1,7 +1,6 @@
 package main
 
 import (
-	// "bufio"
 	"code.google.com/p/gopass"
 	"encoding/base64"
 	"errors"
@@ -34,11 +33,10 @@ func newBackend() (backend.Backend, error) {
 }
 
 func init() {
-
-	flag.StringVar(&config.SecretFilepath, "stocker-secret", "", "path to encryption secret")
-	flag.StringVar(&config.Backend, "stocker-backend", "redis", "backend to use")
-	flag.StringVar(&config.BackendConnectionType, "stocker-backend-connection-type", "tcp", "backend connection type")
-	flag.StringVar(&config.BackendConnectionString, "stocker-backend-connection-string", "127.0.0.1:6379", "backend connection string")
+	flag.StringVar(&config.SecretFilepath, "secret", "", "path to encryption secret")
+	flag.StringVar(&config.Backend, "backend", "redis", "backend to use")
+	flag.StringVar(&config.BackendConnectionType, "backend-connection-type", "tcp", "backend connection type")
+	flag.StringVar(&config.BackendConnectionString, "backend-connection-string", ":6379", "backend connection string")
 }
 
 func main() {

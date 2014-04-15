@@ -52,7 +52,7 @@ func NewKeyFromFile(filepath string) (Key, error) {
 	}
 
 	// Attempt to decode the encoded content into a new slice of bytes.
-	key := make([]byte, len(encodedKey)*4)
+	key := make([]byte, KeyLen)
 	base64.StdEncoding.Decode(key, encodedKey)
 
 	// Return the key

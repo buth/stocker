@@ -74,7 +74,7 @@ func (r *redisBackend) Remove(key string) error {
 	return err
 }
 
-func (r *redisBackend) publish(key, message string) error {
+func (r *redisBackend) Publish(key, message string) error {
 
 	// Wait for a signal from the semaphore and then pull a new connection from
 	// the pool. Defer signalling the semaphore and closing the connection.

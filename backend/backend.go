@@ -5,10 +5,11 @@ import (
 )
 
 type Backend interface {
-	Get(key string) (string, error)
+	Get(string) (string, error)
 	Set(key, value string) error
 	Remove(string) error
 	Subscribe(key string, process func(value string)) error
+	Publish(key, message string) error
 }
 
 func Key(components ...string) string {
