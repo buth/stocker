@@ -14,15 +14,10 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	// "strings"
 )
 
 var config struct {
 	Group, SecretFilepath, Crypter, Backend, BackendConnectionType, BackendConnectionString string
-}
-
-type Stocker struct {
-	Env map[string]string
 }
 
 // newBackend instantiates a new backend of the chosen type using the
@@ -50,13 +45,12 @@ func main() {
 	// Check to make sure that a command has been specified.
 	if flag.NArg() < 1 {
 		flag.Usage()
-		return
+		os.Exit(1)
 	}
 
-	// A blank key should be acceptable.
+	// Check if we should try to load a key from a file on disk. If a path was
+	// not provided, generate a new key.
 	var key crypto.Key
-
-	// Check if we should try to load a key from a file on disk.
 	if config.SecretFilepath != "" {
 
 		// Try to create a new key from the given file path.
@@ -85,10 +79,20 @@ func main() {
 	// What are we doing here?
 	switch flag.Arg(0) {
 
+	default:
+		flag.Usage()
+		os.Exit(1)
+
 	case "key":
 		fmt.Println(key)
 
 	case "set":
+
+		// Check to make sure there is an app name and a variable name.
+		if flag.NArg() < 3 {
+			flag.Usage()
+			os.Exit(1)
+		}
 
 		// Set the prefix.
 		prefix := flag.Arg(1)
@@ -108,6 +112,12 @@ func main() {
 		b.Set(backend.KeyEnv(prefix, variable), cryptedValue)
 
 	case "run":
+
+		// Check to make sure there is an app name.
+		if flag.NArg() < 2 {
+			flag.Usage()
+			os.Exit(1)
+		}
 
 		// Set the prefix.
 		prefix := flag.Arg(1)
