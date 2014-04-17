@@ -1,45 +1,23 @@
 package main
 
 import (
-	"encoding/base64"
+	"code.google.com/p/gopass"
+	"container/list"
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/buth/stocker/stocker"
-	"github.com/buth/stocker/stocker/backend"
-	"github.com/buth/stocker/stocker/backend/redis"
-	"github.com/buth/stocker/stocker/crypto"
-	"github.com/buth/stocker/stocker/crypto/chain"
+	"github.com/buth/stocker/backend"
+	"github.com/buth/stocker/backend/redis"
+	"github.com/buth/stocker/crypto"
+	"io"
 	"log"
-	"strings"
+	"os"
+	"os/exec"
+	"os/signal"
 )
 
 var config struct {
 	Group, SecretFilepath, Crypter, Backend, BackendConnectionType, BackendConnectionString string
-}
-
-// genereateKey creates and returns a new key for the chosen crypter as a
-// slice of bytes.
-func generateKey() []byte {
-	switch config.Crypter {
-	case "chain":
-		return chain.GenerateKey()
-	}
-	return []byte{}
-}
-
-// newCrypter instantiates a new crypter of the chosen type using a new key or
-// the base 64 encoded key present in the file at config.Secret.
-func newCrypter(key []byte) (crypto.Crypter, error) {
-	switch config.Crypter {
-	case "chain":
-		newChain, err := chain.New(key)
-		if err != nil {
-			return nil, err
-		}
-		return newChain, nil
-	}
-	return nil, errors.New("no crypter selected")
 }
 
 // newBackend instantiates a new backend of the chosen type using the
@@ -55,33 +33,39 @@ func newBackend() (backend.Backend, error) {
 }
 
 func init() {
-
-	flag.StringVar(&config.Crypter, "stocker-crypter", "chain", "crypter to use")
-	flag.StringVar(&config.SecretFilepath, "stocker-secret", "", "path to encryption secret")
-	flag.StringVar(&config.Backend, "stocker-backend", "redis", "backend to use")
-	flag.StringVar(&config.BackendConnectionType, "stocker-backend-connection-type", "tcp", "backend connection type")
-	flag.StringVar(&config.BackendConnectionString, "stocker-backend-connection-string", "127.0.0.1:6379", "backend connection string")
+	flag.StringVar(&config.SecretFilepath, "secret", "", "path to encryption secret")
+	flag.StringVar(&config.Backend, "backend", "redis", "backend to use")
+	flag.StringVar(&config.BackendConnectionType, "backend-connection-type", "tcp", "backend connection type")
+	flag.StringVar(&config.BackendConnectionString, "backend-connection-string", ":6379", "backend connection string")
 }
 
 func main() {
 	flag.Parse()
 
-	// A blank key should be acceptable.
-	key := []byte{}
+	// Check to make sure that a command has been specified.
+	if flag.NArg() < 1 {
+		flag.Usage()
+		os.Exit(1)
+	}
 
-	// Check if we should try to load a key from a file on disk.
+	// Check if we should try to load a key from a file on disk. If a path was
+	// not provided, generate a new key.
+	var key crypto.Key
 	if config.SecretFilepath != "" {
-		if keyFromFile, err := crypto.KeyFromFile(config.SecretFilepath); err != nil {
+
+		// Try to create a new key from the given file path.
+		keyFromFile, err := crypto.NewKeyFromFile(config.SecretFilepath)
+		if err != nil {
 			log.Fatalln(err)
-		} else {
-			key = keyFromFile
 		}
+
+		key = keyFromFile
 	} else {
-		key = generateKey()
+		key = crypto.NewKey()
 	}
 
 	// Attempt to load a crypter.
-	c, err := newCrypter(key)
+	c, err := crypto.NewCrypter(key)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -95,45 +79,150 @@ func main() {
 	// What are we doing here?
 	switch flag.Arg(0) {
 
-	case "daemon":
+	default:
+		flag.Usage()
+		os.Exit(1)
 
-		if flag.NArg() < 2 {
-			log.Fatal("daemon requires a groupname!")
+	case "key":
+		fmt.Print(key)
+
+	case "set":
+
+		// Check to make sure there is an app name and a variable name.
+		if flag.NArg() < 3 {
+			flag.Usage()
+			os.Exit(1)
 		}
 
-		if s, err := stocker.NewGroup(flag.Arg(1), b, c); err != nil {
+		// Set the prefix.
+		prefix := flag.Arg(1)
+		variable := flag.Arg(2)
+
+		value, err := gopass.GetPass(fmt.Sprintf("%s=", flag.Arg(2)))
+		if err != nil {
 			log.Fatal(err)
-		} else {
-			log.Println("Starting daemon")
-			log.Panic(s.Run())
 		}
+
+		cryptedValue, err := c.EncryptString(value)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Set the key and notify any listeners.
+		b.Set(backend.KeyEnv(prefix, variable), cryptedValue)
 
 	case "run":
 
-		if flag.NArg() < 3 {
-			log.Fatal("run requires a group and resource name!")
+		// Check to make sure there is an app name.
+		if flag.NArg() < 2 {
+			flag.Usage()
+			os.Exit(1)
 		}
 
-		group := flag.Arg(1)
-		name := flag.Arg(2)
-		message := strings.Join(flag.Args()[3:], " ")
+		// Set the prefix.
+		prefix := flag.Arg(1)
 
-		// Save the new configuration.
-		if err := b.Set(backend.Key("conf", group, "resource", name), message); err != nil {
+		// Set the args.
+		args := make([]string, flag.NArg()-1)
+		args[0] = "run"
+		copy(args[1:], flag.Args()[2:])
+
+		// Create a new run command.
+		cmd := exec.Command("docker", args...)
+
+		// Setup the stdout pipe.
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Fatal(err)
+		}
+		go io.Copy(os.Stdout, stdout)
+
+		// Setup the stderr pipe.
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			log.Fatal(err)
+		}
+		go io.Copy(os.Stderr, stderr)
+
+		// Setup the stderr pipe.
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			log.Fatal(err)
+		}
+		go io.Copy(stdin, os.Stdin)
+
+		// Loop through the remaining arguments looking for possible
+		// environment settings.
+		decryptedEnv := list.New()
+		for i := 2; i < flag.NArg(); i++ {
+
+			if flag.Arg(i) == "-e" && i+1 < flag.NArg() {
+
+				variable := flag.Arg(i + 1)
+
+				// Set the key to use with the backend.
+				key := backend.KeyEnv(prefix, variable)
+
+				cryptedValue, err := b.Get(key)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				decryptedValue, err := c.DecryptString(cryptedValue)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				// Format the statement.
+				statement := fmt.Sprintf("%s=%s", variable, decryptedValue)
+
+				// Add the statement to the list.
+				decryptedEnv.PushBack(statement)
+			}
+		}
+
+		// Create a slice of strings large enough to contain both the os
+		// environement and the decrypted environment.
+		cmd.Env = make([]string, len(os.Environ()), len(os.Environ())+decryptedEnv.Len())
+		copy(cmd.Env, os.Environ())
+
+		for e := decryptedEnv.Front(); e != nil; e = e.Next() {
+			i := len(cmd.Env)
+			cmd.Env = cmd.Env[:i+1]
+			cmd.Env[i] = e.Value.(string)
+		}
+
+		// Run the command.
+		if err := cmd.Start(); err != nil {
 			log.Fatal(err)
 		}
 
-		// Add the resource to the list for this group.
-		if err := b.Add(backend.Key("conf", group, "resources"), name); err != nil {
-			log.Fatal(err)
-		}
+		// Handle signalling.
+		ch := make(chan os.Signal, 1)
+		go func() {
+			for {
 
-		// Signal listeners for this group to reload the resource.
-		if err := b.Publish(backend.Key("cast", group, name), "reload"); err != nil {
-			log.Fatal(err)
-		}
+				// Wait for a signal; exit if the channel is closed.
+				sig, ok := <-ch
+				if !ok {
+					return
+				}
 
-	case "key":
-		fmt.Println(base64.StdEncoding.EncodeToString(key))
+				// Forward the signal to the command process.
+				cmd.Process.Signal(sig)
+			}
+		}()
+
+		// Set the channel for notifications. We're sending along all signals.
+		signal.Notify(ch)
+
+		// Wait for it to exit.
+		cmd.Wait()
+
+		// Stop sending signal notifications to the channel.
+		signal.Stop(ch)
+
+		// Close the channel to tell the go routine to exit.
+		close(ch)
 	}
 }
