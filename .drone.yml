@@ -1,0 +1,11 @@
+image: newsdev/go:1.2
+
+script:
+  - ln -s `pwd` $GOPATH/src/github.com/buth/stocker
+  - go get -d -v ./...
+  - go test -v ./...
+
+notify:
+  email:
+    recipients:
+      - eric.buth@nytimes.com
