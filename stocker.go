@@ -84,7 +84,7 @@ func main() {
 		os.Exit(1)
 
 	case "key":
-		fmt.Println(key)
+		fmt.Print(key)
 
 	case "set":
 
