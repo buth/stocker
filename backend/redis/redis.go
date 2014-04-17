@@ -12,7 +12,6 @@ const (
 type redisBackend struct {
 	connectionType, connectionString string
 	pool                             *redis.Pool
-	subscriptions                    map[string]*redis.PubSubConn
 }
 
 func New(connectionType, connectionString string) *redisBackend {
@@ -22,9 +21,6 @@ func New(connectionType, connectionString string) *redisBackend {
 	// Build the underlying pool setting the maximum size to the number of
 	// allowed concurrent connections.
 	r.pool = redis.NewPool(r.dial, MaxIdle)
-
-	// // Subscriptions.
-	// r.subscriptions = make(map[string]*redis.PubSubConn)
 
 	// Build the Backend object.
 	return r
@@ -72,51 +68,4 @@ func (r *redisBackend) Remove(key string) error {
 	// Run the DEL command and return any error.
 	_, err := conn.Do("DEL", key)
 	return err
-}
-
-func (r *redisBackend) Publish(key, message string) error {
-
-	// Wait for a signal from the semaphore and then pull a new connection from
-	// the pool. Defer signalling the semaphore and closing the connection.
-	conn := r.pool.Get()
-	defer conn.Close()
-
-	// Run the PUBLISH command and return any error.
-	_, err := conn.Do("PUBLISH", key, message)
-	return err
-}
-
-func (r *redisBackend) Subscribe(key string, process func(string)) error {
-
-	// Don't pull these connections from the pool, as they will remain open.
-	conn, err := r.dial()
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	// Use the redis Pub/Sub wrapper.
-	if err = r.subscriptions[key].PSubscribe(key); err != nil {
-		return err
-	}
-
-	defer r.subscriptions[key].Close()
-
-	for {
-		switch v := r.subscriptions[key].Receive().(type) {
-		case redis.PMessage:
-			// v.Channel,
-			process(string(v.Data))
-
-		case redis.Subscription:
-			if v.Kind == "punsubscribe" {
-				return nil
-			}
-		case error:
-			return v
-		}
-	}
-
-	// The only returnable error was with the subscription.
-	return nil
 }

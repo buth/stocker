@@ -22,6 +22,11 @@ func (k Key) Valid() bool {
 	return len(k) == KeyLen
 }
 
+// String returns the value of the key encoded as a base 64 string.
+func (k Key) String() string {
+	return fmt.Sprintf("%s", base64.StdEncoding.EncodeToString(k))
+}
+
 // NewKey creates and returns a new random key that can be used to create a
 // new crypter.
 func NewKey() Key {

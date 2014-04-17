@@ -3,7 +3,6 @@ package main
 import (
 	"code.google.com/p/gopass"
 	"container/list"
-	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -49,13 +48,13 @@ func main() {
 	flag.Parse()
 
 	// Check to make sure that a command has been specified.
-	if flag.NArg() < 2 {
+	if flag.NArg() < 1 {
 		flag.Usage()
 		return
 	}
 
 	// A blank key should be acceptable.
-	key := []byte{}
+	var key crypto.Key
 
 	// Check if we should try to load a key from a file on disk.
 	if config.SecretFilepath != "" {
@@ -83,14 +82,16 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	// Set the prefix.
-	prefix := flag.Arg(0)
-
 	// What are we doing here?
-	switch flag.Arg(1) {
+	switch flag.Arg(0) {
+
+	case "key":
+		fmt.Println(key)
 
 	case "set":
 
+		// Set the prefix.
+		prefix := flag.Arg(1)
 		variable := flag.Arg(2)
 
 		value, err := gopass.GetPass(fmt.Sprintf("%s=", flag.Arg(2)))
@@ -108,12 +109,16 @@ func main() {
 
 	case "run":
 
-		// Set up a map for the decrypted values.
+		// Set the prefix.
+		prefix := flag.Arg(1)
 
-		// processedEnv := make([]string, len(config.Env))
+		// Set the args.
+		args := make([]string, flag.NArg()-1)
+		args[0] = "run"
+		copy(args[1:], flag.Args()[2:])
 
 		// Create a new run command.
-		cmd := exec.Command("docker", flag.Args()[1:]...)
+		cmd := exec.Command("docker", args...)
 
 		// Setup the stdout pipe.
 		stdout, err := cmd.StdoutPipe()
@@ -136,9 +141,9 @@ func main() {
 		}
 		go io.Copy(stdin, os.Stdin)
 
-		decryptedEnv := list.New()
 		// Loop through the remaining arguments looking for possible
 		// environment settings.
+		decryptedEnv := list.New()
 		for i := 2; i < flag.NArg(); i++ {
 
 			if flag.Arg(i) == "-e" && i+1 < flag.NArg() {
@@ -183,31 +188,31 @@ func main() {
 		}
 
 		// Handle signalling.
-
-		ch := make(chan os.Signal)
+		ch := make(chan os.Signal, 1)
 		go func() {
 			for {
+
+				// Wait for a signal; exit if the channel is closed.
 				sig, ok := <-ch
 				if !ok {
 					return
 				}
 
-				fmt.Println("GO", sig)
-
 				// Forward the signal to the command process.
 				cmd.Process.Signal(sig)
-
 			}
 		}()
 
+		// Set the channel for notifications. We're sending along all signals.
 		signal.Notify(ch)
 
 		// Wait for it to exit.
 		cmd.Wait()
-		signal.Stop(ch)
-		close(ch)
 
-	case "key":
-		fmt.Println(base64.StdEncoding.EncodeToString(key))
+		// Stop sending signal notifications to the channel.
+		signal.Stop(ch)
+
+		// Close the channel to tell the go routine to exit.
+		close(ch)
 	}
 }

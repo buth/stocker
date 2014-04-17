@@ -12,10 +12,8 @@ const (
 
 type Backend interface {
 	Get(string) (string, error)
-	Set(key, value string) error
+	Set(string, string) error
 	Remove(string) error
-	Subscribe(key string, process func(value string)) error
-	Publish(key, message string) error
 }
 
 func key(components ...string) string {
