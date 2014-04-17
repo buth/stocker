@@ -1,5 +1,8 @@
 image: newsdev/go:1.2
 
+services:
+  - redis
+
 script:
   - ln -s `pwd` $GOPATH/src/github.com/buth/stocker
   - go get -d -v ./...
