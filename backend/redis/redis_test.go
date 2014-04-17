@@ -3,11 +3,9 @@ package redis
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"github.com/garyburd/redigo/redis"
 	"io"
 	"sync"
 	"testing"
-	"time"
 )
 
 func TestGetSet(t *testing.T) {
@@ -36,48 +34,14 @@ func TestGetSet(t *testing.T) {
 	}
 }
 
-func TestGetSetTTL(t *testing.T) {
-
-	r := New("tcp", "127.0.0.1:6379")
-
-	valueBytes := make([]byte, 512)
-	if _, err := io.ReadFull(rand.Reader, valueBytes); err != nil {
-		t.Errorf("%s", err)
-	}
-
-	valueString := base64.StdEncoding.EncodeToString(valueBytes)
-
-	err := r.SetWithTTL("test", valueString, 1)
-	if err != nil {
-		t.Errorf("%s", err)
-	}
-
-	v, err := r.Get("test")
-	if err != nil {
-		t.Errorf("%s", err)
-	}
-
-	if v != valueString {
-		t.Errorf("\n%s\n%s\nRetrieved text did not match!", valueString, v)
-	}
-
-	time.Sleep(1001 * time.Millisecond)
-
-	_, err = r.Get("test")
-	if err != redis.ErrNil {
-		t.Errorf("\n%s\nExpected a nil value error!", err)
-	}
-}
-
 func TestPubSub(t *testing.T) {
 
 	r := New("tcp", "127.0.0.1:6379")
 
 	var wg sync.WaitGroup
 
-	processMessage := func(channel, message string) error {
+	processMessage := func(message string) {
 		wg.Done()
-		return nil
 	}
 
 	r.Subscribe("test/*", processMessage)
@@ -89,20 +53,4 @@ func TestPubSub(t *testing.T) {
 	r.Publish("test/key4", "nothing")
 	r.Publish("test/", "nothing")
 	wg.Wait()
-
-	r.Unsubscribe("test/*")
-}
-
-func TestPubUnsub(t *testing.T) {
-
-	r := New("tcp", "127.0.0.1:6379")
-
-	processMessage := func(channel, message string) error {
-		t.Errorf("Expected to unsubscribe before recieving a message!")
-		return nil
-	}
-
-	r.Subscribe("test/*", processMessage)
-	r.Unsubscribe("test/*")
-	r.Publish("test/", "something")
 }

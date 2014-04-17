@@ -2,6 +2,7 @@ package main
 
 import (
 	"code.google.com/p/gopass"
+	"container/list"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -9,15 +10,20 @@ import (
 	"github.com/buth/stocker/backend"
 	"github.com/buth/stocker/backend/redis"
 	"github.com/buth/stocker/crypto"
-	"github.com/dotcloud/docker/pkg/sysinfo"
-	"github.com/dotcloud/docker/runconfig"
+	"io"
 	"log"
 	"os"
-	"strings"
+	"os/exec"
+	"os/signal"
+	// "strings"
 )
 
 var config struct {
 	Group, SecretFilepath, Crypter, Backend, BackendConnectionType, BackendConnectionString string
+}
+
+type Stocker struct {
+	Env map[string]string
 }
 
 // newBackend instantiates a new backend of the chosen type using the
@@ -42,16 +48,25 @@ func init() {
 func main() {
 	flag.Parse()
 
+	// Check to make sure that a command has been specified.
+	if flag.NArg() < 2 {
+		flag.Usage()
+		return
+	}
+
 	// A blank key should be acceptable.
 	key := []byte{}
 
 	// Check if we should try to load a key from a file on disk.
 	if config.SecretFilepath != "" {
-		if keyFromFile, err := crypto.NewKeyFromFile(config.SecretFilepath); err != nil {
+
+		// Try to create a new key from the given file path.
+		keyFromFile, err := crypto.NewKeyFromFile(config.SecretFilepath)
+		if err != nil {
 			log.Fatalln(err)
-		} else {
-			key = keyFromFile
 		}
+
+		key = keyFromFile
 	} else {
 		key = crypto.NewKey()
 	}
@@ -68,12 +83,14 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	// Set the prefix.
+	prefix := flag.Arg(0)
+
 	// What are we doing here?
-	switch flag.Arg(0) {
+	switch flag.Arg(1) {
 
 	case "set":
 
-		prefix := flag.Arg(1)
 		variable := flag.Arg(2)
 
 		value, err := gopass.GetPass(fmt.Sprintf("%s=", flag.Arg(2)))
@@ -81,89 +98,114 @@ func main() {
 			log.Fatal(err)
 		}
 
-		fmt.Println(value)
-
 		cryptedValue, err := c.EncryptString(value)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		fmt.Println(cryptedValue)
-
-		key := fmt.Sprintf("stocker/%s/env/%s", prefix, variable)
-		listener := fmt.Sprintf("stocker/%s/signal/%s", prefix, variable)
-
 		// Set the key and notify any listeners.
-		b.Set(key, cryptedValue)
-		b.Publish(listener, cryptedValue)
+		b.Set(backend.KeyEnv(prefix, variable), cryptedValue)
 
 	case "run":
 
-		if flag.NArg() < 3 {
-			log.Fatal("run requires a group and resource name!")
+		// Set up a map for the decrypted values.
+
+		// processedEnv := make([]string, len(config.Env))
+
+		// Create a new run command.
+		cmd := exec.Command("docker", flag.Args()[1:]...)
+
+		// Setup the stdout pipe.
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Fatal(err)
 		}
+		go io.Copy(os.Stdout, stdout)
 
-		log.Println(c, b)
+		// Setup the stderr pipe.
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			log.Fatal(err)
+		}
+		go io.Copy(os.Stderr, stderr)
 
-		prefix := flag.Arg(1)
+		// Setup the stderr pipe.
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			log.Fatal(err)
+		}
+		go io.Copy(stdin, os.Stdin)
 
-		config, hostConfig, _, err := runconfig.Parse(flag.Args()[2:], sysinfo.New(true)) //(*Config, *HostConfig, *flag.FlagSet, error)
+		decryptedEnv := list.New()
+		// Loop through the remaining arguments looking for possible
+		// environment settings.
+		for i := 2; i < flag.NArg(); i++ {
 
-		log.Println(config, hostConfig, err)
+			if flag.Arg(i) == "-e" && i+1 < flag.NArg() {
 
-		log.Println(config.Image)
+				variable := flag.Arg(i + 1)
 
-		log.Println(config.ExposedPorts)
-
-		log.Println(config.Cmd)
-
-		log.Println(config.Env)
-
-		processedEnv := make([]string, len(config.Env))
-
-		for i, env := range config.Env {
-
-			components := strings.Split(env, "=")
-			variable := components[0]
-			value := components[1]
-
-			if value != "" {
-
-				// A value was specified explicitly on the command line, so
-				// let's just use that.
-				processedEnv[i] = env
-			} else if osEnvValue := os.Getenv(variable); osEnvValue != "" {
-
-				// A value was available in the environment.
-				processedEnv[i] = fmt.Sprintf("%s=%s", variable, osEnvValue)
-			} else {
-
-				// No value was given or available in the evironment so let's
-				// assume that we should try to pull a secure value from the
-				// store.
-
-				key := fmt.Sprintf("stocker/%s/env/%s", prefix, variable)
-				// listener := fmt.Sprintf("stocker/%s/signal/%s", prefix, variable)
+				// Set the key to use with the backend.
+				key := backend.KeyEnv(prefix, variable)
 
 				cryptedValue, err := b.Get(key)
 				if err != nil {
-					log.Println(err)
-					// handle
+					log.Fatal(err)
 				}
 
 				decryptedValue, err := c.DecryptString(cryptedValue)
 				if err != nil {
-					log.Println(err)
-					// handle
+					log.Fatal(err)
 				}
 
-				processedEnv[i] = fmt.Sprintf("%s=%s", variable, decryptedValue)
+				// Format the statement.
+				statement := fmt.Sprintf("%s=%s", variable, decryptedValue)
+
+				// Add the statement to the list.
+				decryptedEnv.PushBack(statement)
 			}
 		}
 
-		config.Env = processedEnv
+		// Create a slice of strings large enough to contain both the os
+		// environement and the decrypted environment.
+		cmd.Env = make([]string, len(os.Environ()), len(os.Environ())+decryptedEnv.Len())
+		copy(cmd.Env, os.Environ())
 
-		fmt.Println(config.Env)
+		for e := decryptedEnv.Front(); e != nil; e = e.Next() {
+			i := len(cmd.Env)
+			cmd.Env = cmd.Env[:i+1]
+			cmd.Env[i] = e.Value.(string)
+		}
+
+		// Run the command.
+		if err := cmd.Start(); err != nil {
+			log.Fatal(err)
+		}
+
+		// Handle signalling.
+
+		ch := make(chan os.Signal)
+		go func() {
+			for {
+				sig, ok := <-ch
+				if !ok {
+					return
+				}
+
+				fmt.Println("GO", sig)
+
+				// Forward the signal to the command process.
+				cmd.Process.Signal(sig)
+
+			}
+		}()
+
+		signal.Notify(ch)
+
+		// Wait for it to exit.
+		cmd.Wait()
+		signal.Stop(ch)
+		close(ch)
 
 	case "key":
 		fmt.Println(base64.StdEncoding.EncodeToString(key))

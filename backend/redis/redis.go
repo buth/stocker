@@ -96,7 +96,6 @@ func (r *redisBackend) Subscribe(key string, process func(string)) error {
 	defer conn.Close()
 
 	// Use the redis Pub/Sub wrapper.
-	r.subscriptions[key] = &redis.PubSubConn{conn}
 	if err = r.subscriptions[key].PSubscribe(key); err != nil {
 		return err
 	}

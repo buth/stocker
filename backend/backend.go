@@ -4,6 +4,12 @@ import (
 	"strings"
 )
 
+const (
+	KeyNamePrefix = "stocker"
+	KeyNameEnv    = "env"
+	KeySep        = "/"
+)
+
 type Backend interface {
 	Get(string) (string, error)
 	Set(key, value string) error
@@ -12,10 +18,10 @@ type Backend interface {
 	Publish(key, message string) error
 }
 
-func Key(components ...string) string {
-	return strings.Join(components, "/")
+func key(components ...string) string {
+	return strings.Join(components, KeySep)
 }
 
-func DecomposeKey(key string) []string {
-	return strings.Split(key, "/")
+func KeyEnv(prefix, variable string) string {
+	return key(KeyNamePrefix, prefix, KeyNameEnv, variable)
 }
