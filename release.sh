@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION=v0.0.1
+VERSION=v0.1.0
 RELEASE_BRANCH=master
 
 if [[ $DRONE_BRANCH != $RELEASE_BRANCH ]]; then
