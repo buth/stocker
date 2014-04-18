@@ -2,7 +2,6 @@ package main
 
 import (
 	"code.google.com/p/gopass"
-	"container/list"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,27 +15,47 @@ import (
 	"os/signal"
 )
 
+type StringAcumulator []string
+
+func (s *StringAcumulator) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
+func (s *StringAcumulator) String() string {
+	return fmt.Sprintf("%s", *s)
+}
+
 var config struct {
-	Group, SecretFilepath, Crypter, Backend, BackendConnectionType, BackendConnectionString string
+	SecretFilepath, Backend, BackendProtocol, BackendHost string
+	EnvVars                                               StringAcumulator
 }
 
 // newBackend instantiates a new backend of the chosen type using the
-// connection information in config.BackendConnectionType and
-// config.BackendConnectionString.
+// connection information in config.BackendProtocol and
+// config.BackendHost.
 func newBackend() (backend.Backend, error) {
 	switch config.Backend {
 	case "redis":
-		newRedisBackend := redis.New(config.BackendConnectionType, config.BackendConnectionString)
+		newRedisBackend := redis.New(config.BackendProtocol, config.BackendHost)
 		return newRedisBackend, nil
 	}
 	return nil, errors.New("no backend selected")
 }
 
+// usage prints a usage statment for stocker.
+func usage(code int) {
+	fmt.Println("Usage: stocker [OPTIONS] COMMAND NAME [ARG...]")
+	flag.PrintDefaults()
+	os.Exit(code)
+}
+
 func init() {
-	flag.StringVar(&config.SecretFilepath, "secret", "", "path to encryption secret")
-	flag.StringVar(&config.Backend, "backend", "redis", "backend to use")
-	flag.StringVar(&config.BackendConnectionType, "backend-connection-type", "tcp", "backend connection type")
-	flag.StringVar(&config.BackendConnectionString, "backend-connection-string", ":6379", "backend connection string")
+	flag.StringVar(&config.SecretFilepath, "k", "", "path to encryption key")
+	flag.StringVar(&config.Backend, "b", "redis", "backend to use")
+	flag.StringVar(&config.BackendProtocol, "t", "tcp", "backend connection protocol")
+	flag.StringVar(&config.BackendHost, "h", ":6379", "backend connection host (optionally including port)")
+	flag.Var(&config.EnvVars, "e", "environment variables")
 }
 
 func main() {
@@ -44,8 +63,7 @@ func main() {
 
 	// Check to make sure that a command has been specified.
 	if flag.NArg() < 1 {
-		flag.Usage()
-		os.Exit(1)
+		usage(1)
 	}
 
 	// Check if we should try to load a key from a file on disk. If a path was
@@ -80,55 +98,53 @@ func main() {
 	switch flag.Arg(0) {
 
 	default:
-		flag.Usage()
-		os.Exit(1)
+		usage(1)
+
+	case "help":
+		usage(0)
 
 	case "key":
 		fmt.Print(key)
 
 	case "set":
 
-		// Check to make sure there is an app name and a variable name.
+		// Check to make sure there is a prefix.
+		if flag.NArg() != 2 {
+			usage(1)
+		}
+
+		// Set the prefix.
+		prefix := flag.Arg(1)
+
+		// Iterate through the variables provided.
+		for _, variable := range config.EnvVars {
+
+			value, err := gopass.GetPass(fmt.Sprintf("%s=", variable))
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			cryptedValue, err := c.EncryptString(value)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			// Set the key and notify any listeners.
+			b.Set(backend.KeyEnv(prefix, variable), cryptedValue)
+		}
+
+	case "exec":
+
+		// Check to make sure there is an app name and a command.
 		if flag.NArg() < 3 {
-			flag.Usage()
-			os.Exit(1)
+			usage(1)
 		}
 
 		// Set the prefix.
 		prefix := flag.Arg(1)
-		variable := flag.Arg(2)
-
-		value, err := gopass.GetPass(fmt.Sprintf("%s=", flag.Arg(2)))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		cryptedValue, err := c.EncryptString(value)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		// Set the key and notify any listeners.
-		b.Set(backend.KeyEnv(prefix, variable), cryptedValue)
-
-	case "run":
-
-		// Check to make sure there is an app name.
-		if flag.NArg() < 2 {
-			flag.Usage()
-			os.Exit(1)
-		}
-
-		// Set the prefix.
-		prefix := flag.Arg(1)
-
-		// Set the args.
-		args := make([]string, flag.NArg()-1)
-		args[0] = "run"
-		copy(args[1:], flag.Args()[2:])
 
 		// Create a new run command.
-		cmd := exec.Command("docker", args...)
+		cmd := exec.Command(flag.Arg(2), flag.Args()[3:]...)
 
 		// Setup the stdout pipe.
 		stdout, err := cmd.StdoutPipe()
@@ -151,45 +167,36 @@ func main() {
 		}
 		go io.Copy(stdin, os.Stdin)
 
-		// Loop through the remaining arguments looking for possible
-		// environment settings.
-		decryptedEnv := list.New()
-		for i := 2; i < flag.NArg(); i++ {
+		// Create a list of environment variables for the command itself.
+		cmd.Env = make([]string, len(config.EnvVars))
 
-			if flag.Arg(i) == "-e" && i+1 < flag.NArg() {
+		// Loop through the provided environment variables, looking for values
+		// first in the environment, and secondarally in the backend store.
+		// All errors are fatal.
+		for i, variable := range config.EnvVars {
 
-				variable := flag.Arg(i + 1)
+			// Set the key to use with the backend.
+			key := backend.KeyEnv(prefix, variable)
+			value := os.Getenv(variable)
 
-				// Set the key to use with the backend.
-				key := backend.KeyEnv(prefix, variable)
+			// Check if we should search for a value.
+			if value == "" {
 
 				cryptedValue, err := b.Get(key)
 				if err != nil {
-					log.Fatal(err)
+					log.Fatalf("%s: %s", variable, err)
 				}
 
 				decryptedValue, err := c.DecryptString(cryptedValue)
 				if err != nil {
-					log.Fatal(err)
+					log.Fatalf("%s: %s", variable, err)
 				}
 
-				// Format the statement.
-				statement := fmt.Sprintf("%s=%s", variable, decryptedValue)
-
-				// Add the statement to the list.
-				decryptedEnv.PushBack(statement)
+				value = decryptedValue
 			}
-		}
 
-		// Create a slice of strings large enough to contain both the os
-		// environement and the decrypted environment.
-		cmd.Env = make([]string, len(os.Environ()), len(os.Environ())+decryptedEnv.Len())
-		copy(cmd.Env, os.Environ())
-
-		for e := decryptedEnv.Front(); e != nil; e = e.Next() {
-			i := len(cmd.Env)
-			cmd.Env = cmd.Env[:i+1]
-			cmd.Env[i] = e.Value.(string)
+			// Format the statement.
+			cmd.Env[i] = fmt.Sprintf("%s=%s", variable, value)
 		}
 
 		// Run the command.
