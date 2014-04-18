@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION=0.0.1
+VERSION=v0.0.1
 RELEASE_BRANCH=master
 
 if [[ $DRONE_BRANCH != $RELEASE_BRANCH ]]; then
@@ -9,7 +9,7 @@ if [[ $DRONE_BRANCH != $RELEASE_BRANCH ]]; then
 	exit 0
 fi
 
-gox -output="build/stocker-v$VERSION-{{.OS}}-{{.Arch}}/bin/stocker" -os="linux darwin"
+gox -output="build/stocker-$VERSION-{{.OS}}-{{.Arch}}/bin/stocker" -os="linux darwin"
 
 cd build
 
