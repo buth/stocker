@@ -119,7 +119,7 @@ func main() {
 		// Iterate through the variables provided.
 		for _, variable := range config.EnvVars {
 
-			value, err := gopass.GetPass(fmt.Sprintf("%s=", flag.Arg(2)))
+			value, err := gopass.GetPass(fmt.Sprintf("%s=", variable))
 			if err != nil {
 				log.Fatal(err)
 			}
