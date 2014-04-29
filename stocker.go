@@ -8,11 +8,11 @@ import (
 	"github.com/buth/stocker/backend"
 	"github.com/buth/stocker/backend/redis"
 	"github.com/buth/stocker/crypto"
-	"io"
 	"log"
 	"os"
 	"os/exec"
-	"os/signal"
+	"strings"
+	"syscall"
 )
 
 type StringAcumulator []string
@@ -129,6 +129,8 @@ func main() {
 				log.Fatal(err)
 			}
 
+			fmt.Println(backend.KeyEnv(prefix, variable))
+
 			// Set the key and notify any listeners.
 			b.Set(backend.KeyEnv(prefix, variable), cryptedValue)
 		}
@@ -140,40 +142,32 @@ func main() {
 			usage(1)
 		}
 
+		// Find the expanded path to cmd.
+		cmd, err := exec.LookPath(flag.Arg(2))
+		if err != nil {
+			log.Fatalf("%s: command not found", flag.Arg(2))
+		}
+
 		// Set the prefix.
 		prefix := flag.Arg(1)
 
-		// Create a new run command.
-		cmd := exec.Command(flag.Arg(2), flag.Args()[3:]...)
+		// Set the args.
+		args := flag.Args()[2:]
 
-		// Setup the stdout pipe.
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			log.Fatal(err)
+		// Create a map of environment variables to be passed to cmd and
+		// initialize it with the current environment.
+		env := make(map[string]string)
+		for _, variable := range os.Environ() {
+			components := strings.Split(variable, "=")
+			env[components[0]] = components[1]
 		}
-		go io.Copy(os.Stdout, stdout)
-
-		// Setup the stderr pipe.
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			log.Fatal(err)
-		}
-		go io.Copy(os.Stderr, stderr)
-
-		// Setup the stderr pipe.
-		stdin, err := cmd.StdinPipe()
-		if err != nil {
-			log.Fatal(err)
-		}
-		go io.Copy(stdin, os.Stdin)
-
-		// Create a list of environment variables for the command itself.
-		cmd.Env = make([]string, len(config.EnvVars))
 
 		// Loop through the provided environment variables, looking for values
 		// first in the environment, and secondarally in the backend store.
 		// All errors are fatal.
-		for i, variable := range config.EnvVars {
+		for _, variable := range config.EnvVars {
+
+			fmt.Println(backend.KeyEnv(prefix, variable))
 
 			// Set the key to use with the backend.
 			key := backend.KeyEnv(prefix, variable)
@@ -196,40 +190,18 @@ func main() {
 			}
 
 			// Format the statement.
-			cmd.Env[i] = fmt.Sprintf("%s=%s", variable, value)
+			env[variable] = value
 		}
 
-		// Run the command.
-		if err := cmd.Start(); err != nil {
-			log.Fatal(err)
+		// Create a list of environment key/value pairs and write the
+		// flattened environment variables map to it.
+		envv := make([]string, 0, len(env))
+		for key, value := range env {
+			envv = envv[:len(envv)+1]
+			envv[len(envv)-1] = fmt.Sprintf("%s=%s", key, value)
 		}
 
-		// Handle signalling.
-		ch := make(chan os.Signal, 1)
-		go func() {
-			for {
-
-				// Wait for a signal; exit if the channel is closed.
-				sig, ok := <-ch
-				if !ok {
-					return
-				}
-
-				// Forward the signal to the command process.
-				cmd.Process.Signal(sig)
-			}
-		}()
-
-		// Set the channel for notifications. We're sending along all signals.
-		signal.Notify(ch)
-
-		// Wait for it to exit.
-		cmd.Wait()
-
-		// Stop sending signal notifications to the channel.
-		signal.Stop(ch)
-
-		// Close the channel to tell the go routine to exit.
-		close(ch)
+		// Exec the new command.
+		syscall.Exec(cmd, args, envv)
 	}
 }
