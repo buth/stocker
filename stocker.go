@@ -11,6 +11,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -27,8 +29,8 @@ func (s *StringAcumulator) String() string {
 }
 
 var config struct {
-	SecretFilepath, Backend, BackendProtocol, BackendHost string
-	EnvVars                                               StringAcumulator
+	SecretFilepath, Backend, BackendProtocol, BackendHost, User, Group string
+	EnvVars                                                            StringAcumulator
 }
 
 // newBackend instantiates a new backend of the chosen type using the
@@ -55,6 +57,8 @@ func init() {
 	flag.StringVar(&config.Backend, "b", "redis", "backend to use")
 	flag.StringVar(&config.BackendProtocol, "t", "tcp", "backend connection protocol")
 	flag.StringVar(&config.BackendHost, "h", ":6379", "backend connection host (optionally including port)")
+	flag.StringVar(&config.User, "u", "", "username of the user to run the command as")
+	flag.StringVar(&config.Group, "g", "", "group to run command as")
 	flag.Var(&config.EnvVars, "e", "environment variables")
 }
 
@@ -199,6 +203,24 @@ func main() {
 		for key, value := range env {
 			envv = envv[:len(envv)+1]
 			envv[len(envv)-1] = fmt.Sprintf("%s=%s", key, value)
+		}
+
+		// Handle user.
+		if config.User != "" {
+
+			u, err := user.Lookup(config.User)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			uid, err := strconv.Atoi(u.Uid)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			if err := syscall.Setuid(uid); err != nil {
+				log.Fatal(err)
+			}
 		}
 
 		// Exec the new command.
