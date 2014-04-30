@@ -47,7 +47,7 @@ func newBackend() (backend.Backend, error) {
 
 // usage prints a usage statment for stocker.
 func usage(code int) {
-	fmt.Println("Usage: stocker [OPTIONS] COMMAND NAME [ARG...]")
+	fmt.Println("Usage: stocker [OPTIONS] COMMAND [ARG...]")
 	flag.PrintDefaults()
 	os.Exit(code)
 }
@@ -58,7 +58,7 @@ func init() {
 	flag.StringVar(&config.BackendProtocol, "t", "tcp", "backend connection protocol")
 	flag.StringVar(&config.BackendHost, "h", ":6379", "backend connection host (optionally including port)")
 	flag.StringVar(&config.User, "u", "", "username of the user to run the command as")
-	flag.StringVar(&config.Group, "g", "", "group to run command as")
+	flag.StringVar(&config.Group, "g", "", "group to use for storing and retrieving data")
 	flag.Var(&config.EnvVars, "e", "environment variables")
 }
 
@@ -122,16 +122,8 @@ func main() {
 
 	case "set":
 
-		// Check to make sure there is a prefix.
-		if flag.NArg() != 2 {
-			usage(1)
-		}
-
-		// Set the prefix.
-		group := flag.Arg(1)
-
 		// Iterate through the variables provided.
-		for _, variable := range config.EnvVars {
+		for _, variable := range flag.Args()[1:] {
 
 			value, err := gopass.GetPass(fmt.Sprintf("%s=", variable))
 			if err != nil {
@@ -144,27 +136,24 @@ func main() {
 			}
 
 			// Set the key and notify any listeners.
-			b.SetVariable(group, variable, cryptedValue)
+			b.SetVariable(config.Group, variable, cryptedValue)
 		}
 
 	case "exec":
 
 		// Check to make sure there is an app name and a command.
-		if flag.NArg() < 3 {
+		if flag.NArg() < 2 {
 			usage(1)
 		}
 
 		// Find the expanded path to cmd.
-		cmd, err := exec.LookPath(flag.Arg(2))
+		cmd, err := exec.LookPath(flag.Arg(1))
 		if err != nil {
-			log.Fatalf("%s: command not found", flag.Arg(2))
+			log.Fatalf("%s: command not found", flag.Arg(1))
 		}
 
-		// Set the prefix.
-		group := flag.Arg(1)
-
 		// Set the args.
-		args := flag.Args()[2:]
+		args := flag.Args()[1:]
 
 		// Create a map of environment variables to be passed to cmd and
 		// initialize it with the current environment.
@@ -185,7 +174,7 @@ func main() {
 			// Check if we should search for a value.
 			if value == "" {
 
-				cryptedValue, err := b.GetVariable(group, variable)
+				cryptedValue, err := b.GetVariable(config.Group, variable)
 				if err != nil {
 					log.Fatalf("%s: %s", variable, err)
 				}
