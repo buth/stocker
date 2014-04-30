@@ -18,12 +18,12 @@ func TestGetSet(t *testing.T) {
 
 	valueString := base64.StdEncoding.EncodeToString(valueBytes)
 
-	err := r.Set("group", "variable", valueString)
+	err := r.SetVariable("group", "variable", valueString)
 	if err != nil {
 		t.Errorf("%s", err)
 	}
 
-	v, err := r.Get("group", "variable")
+	v, err := r.GetVariable("group", "variable")
 	if err != nil {
 		t.Errorf("%s", err)
 	}

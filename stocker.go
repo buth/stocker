@@ -118,7 +118,7 @@ func main() {
 		}
 
 		// Set the prefix.
-		prefix := flag.Arg(1)
+		group := flag.Arg(1)
 
 		// Iterate through the variables provided.
 		for _, variable := range config.EnvVars {
@@ -133,10 +133,8 @@ func main() {
 				log.Fatal(err)
 			}
 
-			fmt.Println(backend.KeyEnv(prefix, variable))
-
 			// Set the key and notify any listeners.
-			b.Set(backend.KeyEnv(prefix, variable), cryptedValue)
+			b.SetVariable(group, variable, cryptedValue)
 		}
 
 	case "exec":
@@ -153,7 +151,7 @@ func main() {
 		}
 
 		// Set the prefix.
-		prefix := flag.Arg(1)
+		group := flag.Arg(1)
 
 		// Set the args.
 		args := flag.Args()[2:]
@@ -171,16 +169,13 @@ func main() {
 		// All errors are fatal.
 		for _, variable := range config.EnvVars {
 
-			fmt.Println(backend.KeyEnv(prefix, variable))
-
 			// Set the key to use with the backend.
-			key := backend.KeyEnv(prefix, variable)
 			value := os.Getenv(variable)
 
 			// Check if we should search for a value.
 			if value == "" {
 
-				cryptedValue, err := b.Get(key)
+				cryptedValue, err := b.GetVariable(group, variable)
 				if err != nil {
 					log.Fatalf("%s: %s", variable, err)
 				}

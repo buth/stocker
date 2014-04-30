@@ -35,7 +35,7 @@ func (r *redisBackend) dial() (redis.Conn, error) {
 	return connection, err
 }
 
-func (r *redisBackend) Get(group, variable string) (string, error) {
+func (r *redisBackend) GetVariable(group, variable string) (string, error) {
 
 	// Wait for a signal from the semaphore and then pull a new connection from
 	// the pool. Defer signalling the semaphore and closing the connection.
@@ -46,7 +46,7 @@ func (r *redisBackend) Get(group, variable string) (string, error) {
 	return redis.String(conn.Do("HGET", group, variable))
 }
 
-func (r *redisBackend) Set(group, variable, value string) error {
+func (r *redisBackend) SetVariable(group, variable, value string) error {
 
 	// Wait for a signal from the semaphore and then pull a new connection from
 	// the pool. Defer signalling the semaphore and closing the connection.

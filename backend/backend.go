@@ -11,10 +11,10 @@ const (
 )
 
 type Backend interface {
-	Get(group, variable, string) (string, error)
-	Set(group, variable, value string) error
+	GetVariable(group, variable string) (string, error)
+	SetVariable(group, variable, value string) error
 	RemoveVariable(group, variable string) error
-	RemoveGroup(group, variable string) error
+	RemoveGroup(group string) error
 }
 
 func key(components ...string) string {
