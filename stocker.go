@@ -108,7 +108,17 @@ func main() {
 		usage(0)
 
 	case "key":
-		fmt.Print(key)
+
+		if flag.NArg() != 2 {
+			usage(1)
+		}
+
+		// Set the filename.
+		filename := flag.Arg(1)
+
+		if err := key.ToFile(filename); err != nil {
+			log.Fatal(err)
+		}
 
 	case "set":
 
