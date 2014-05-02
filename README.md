@@ -11,25 +11,33 @@ Stocker is designed to solve the secure configuration issue and *not* to be a fu
 The first step is to create and secure a cryptographic key.
 
 ```
-$ stocker key > key.txt
-$ chmod 600 key.txt
+$ stocker key key.txt
 ```
 
 Once you have a key, you can use it to set a value.
 
 ```
-$ stocker -k key.txt -e PW set mycoolapp
+$ stocker set -k key.txt -g mycoolapp PW
 PW=(invisibly type value)
 ```
 
 To make that value available to a running container, use the `stocker exec` command in conjunction with the `-e` flag. Any specified environement variable *not* available will be retrieved and set.
 
 ```
-$ stocker -k key.txt -e PW -e PATH exec mycoolapp docker run -e PW ubuntu /usr/bin/env
+$ stocker exec -k key.txt -g mycoolapp -e PW -e PATH docker run -e PW ubuntu /usr/bin/env
 HOME=/
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 HOSTNAME=d4929c83a8ea
 PW=myawesomevalue
+```
+
+### Setting User
+
+It's possible to have the resulting process run as a different user using the `-u` flag.
+
+```
+$ stocker exec -k key.txt -g mycoolapp -u mycooluser whoami
+mycooluser
 ```
 
 ## Backends
@@ -43,10 +51,6 @@ Stocker is designed to work with any key value store. At present, the only imple
 The cryptographic portions of the code are commented and hopefully easily decipherable. 
 
 **If you find an issue please pass it on!**
-
-## Roadmap
-* Switch to using the `syscall` package instead of `os/exec`.
-* Add ability to set user and group for the sub-process.
 
 ## Contributing
 
