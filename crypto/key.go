@@ -27,6 +27,31 @@ func (k Key) String() string {
 	return fmt.Sprintf("%s", base64.StdEncoding.EncodeToString(k))
 }
 
+// String returns the value of the key encoded as a base 64 string.
+func (k Key) ToFile(filename string) error {
+
+	// Create a new file. This will wipe out any existing file (if we can
+	// write to it) and set permissions to 666.
+	out, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+
+	if err := out.Chmod(0600); err != nil {
+		return err
+	}
+
+	if _, err := out.WriteString(k.String()); err != nil {
+		return err
+	}
+
+	if err := out.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // NewKey creates and returns a new random key that can be used to create a
 // new crypter.
 func NewKey() Key {
