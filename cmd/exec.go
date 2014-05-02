@@ -76,9 +76,6 @@ func execRun(cmd *Command, args []string) {
 		log.Fatalf("%s: command not found", args[0])
 	}
 
-	// Set the args.
-	commandArgs := args[1:]
-
 	// Create a map of environment variables to be passed to cmd and
 	// initialize it with the current environment.
 	env := make(map[string]string)
@@ -142,5 +139,5 @@ func execRun(cmd *Command, args []string) {
 	}
 
 	// Exec the new command.
-	syscall.Exec(command, commandArgs, commandEnv)
+	syscall.Exec(command, args, commandEnv)
 }
