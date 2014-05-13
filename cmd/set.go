@@ -14,16 +14,17 @@ var Set = &Command{
 }
 
 var setConfig struct {
-	SecretFilepath, Backend, BackendProtocol, BackendHost, Group string
+	SecretFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group string
 }
 
 func init() {
 	Set.Run = setRun
-	Set.Flag.StringVar(&setConfig.SecretFilepath, "k", "", "path to encryption key")
 	Set.Flag.StringVar(&setConfig.Backend, "b", "redis", "backend to use")
+	Set.Flag.StringVar(&setConfig.BackendAddress, "h", ":6379", "backend address")
+	Set.Flag.StringVar(&setConfig.BackendNamespace, "n", "stocker", "backend namespace")
 	Set.Flag.StringVar(&setConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
-	Set.Flag.StringVar(&setConfig.BackendHost, "h", ":6379", "backend connection host (optionally including port)")
 	Set.Flag.StringVar(&setConfig.Group, "g", "", "group to use for storing and retrieving data")
+	Set.Flag.StringVar(&setConfig.SecretFilepath, "k", "", "path to encryption key")
 }
 
 func setRun(cmd *Command, args []string) {
@@ -45,7 +46,7 @@ func setRun(cmd *Command, args []string) {
 		os.Exit(1)
 	}
 
-	b, err := backend.NewBackend(setConfig.Backend, setConfig.BackendProtocol, setConfig.BackendHost)
+	b, err := backend.NewBackend(setConfig.Backend, setConfig.BackendNamespace, setConfig.BackendProtocol, setConfig.BackendAddress)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)

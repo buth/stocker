@@ -9,7 +9,7 @@ import (
 
 func TestGetSet(t *testing.T) {
 
-	r := New("tcp", "127.0.0.1:6379")
+	r := New("test", "tcp", "127.0.0.1:6379")
 
 	valueBytes := make([]byte, 512)
 	if _, err := io.ReadFull(rand.Reader, valueBytes); err != nil {

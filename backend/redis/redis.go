@@ -1,22 +1,24 @@
 package redis
 
 import (
+	"bytes"
 	"github.com/garyburd/redigo/redis"
 	"log"
 )
 
 const (
 	MaxIdle int = 2
+	KeySep      = ':'
 )
 
 type redisBackend struct {
-	connectionType, connectionString string
-	pool                             *redis.Pool
+	namespace, protocol, address string
+	pool                         *redis.Pool
 }
 
-func New(connectionType, connectionString string) *redisBackend {
+func New(namespace, protocol, address string) *redisBackend {
 
-	r := &redisBackend{connectionType: connectionType, connectionString: connectionString}
+	r := &redisBackend{namespace: namespace, protocol: protocol, address: address}
 
 	// Build the underlying pool setting the maximum size to the number of
 	// allowed concurrent connections.
@@ -27,12 +29,19 @@ func New(connectionType, connectionString string) *redisBackend {
 }
 
 func (r *redisBackend) dial() (redis.Conn, error) {
-	connection, err := redis.Dial(r.connectionType, r.connectionString)
+	connection, err := redis.Dial(r.protocol, r.address)
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
 	return connection, err
+}
+
+func (r *redisBackend) Key(group string) []byte {
+	buf := bytes.NewBufferString(r.namespace)
+	buf.WriteRune(KeySep)
+	buf.WriteString(group)
+	return buf.Bytes()
 }
 
 func (r *redisBackend) GetVariable(group, variable string) (string, error) {
@@ -43,7 +52,7 @@ func (r *redisBackend) GetVariable(group, variable string) (string, error) {
 	defer conn.Close()
 
 	// Return the results of the GET command.
-	return redis.String(conn.Do("HGET", group, variable))
+	return redis.String(conn.Do("HGET", r.Key(group), variable))
 }
 
 func (r *redisBackend) SetVariable(group, variable, value string) error {
@@ -54,7 +63,7 @@ func (r *redisBackend) SetVariable(group, variable, value string) error {
 	defer conn.Close()
 
 	// Run the SET command and return any error.
-	_, err := conn.Do("HMSET", group, variable, value)
+	_, err := conn.Do("HMSET", r.Key(group), variable, value)
 	return err
 }
 
@@ -66,7 +75,7 @@ func (r *redisBackend) RemoveVariable(group, variable string) error {
 	defer conn.Close()
 
 	// Run the DEL command and return any error.
-	_, err := conn.Do("HDEL", group, variable)
+	_, err := conn.Do("HDEL", r.Key(group), variable)
 	return err
 }
 
@@ -78,6 +87,6 @@ func (r *redisBackend) RemoveGroup(group string) error {
 	defer conn.Close()
 
 	// Run the DEL command and return any error.
-	_, err := conn.Do("DEL", group)
+	_, err := conn.Do("DEL", r.Key(group))
 	return err
 }
