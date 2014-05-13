@@ -41,7 +41,7 @@ func init() {
 	Exec.Flag.StringVar(&execConfig.BackendNamespace, "n", "stocker", "backend namespace")
 	Exec.Flag.StringVar(&execConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
 	Exec.Flag.StringVar(&execConfig.Group, "g", "", "group to use for storing and retrieving data")
-	Exec.Flag.StringVar(&execConfig.SecretFilepath, "k", "", "path to encryption key")
+	Exec.Flag.StringVar(&execConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
 	Exec.Flag.StringVar(&execConfig.User, "u", "", "user to execute the command as")
 	Exec.Flag.Var(&execConfig.EnvVars, "e", "environment variables")
 }

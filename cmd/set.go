@@ -24,7 +24,7 @@ func init() {
 	Set.Flag.StringVar(&setConfig.BackendNamespace, "n", "stocker", "backend namespace")
 	Set.Flag.StringVar(&setConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
 	Set.Flag.StringVar(&setConfig.Group, "g", "", "group to use for storing and retrieving data")
-	Set.Flag.StringVar(&setConfig.SecretFilepath, "k", "", "path to encryption key")
+	Set.Flag.StringVar(&setConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
 }
 
 func setRun(cmd *Command, args []string) {
