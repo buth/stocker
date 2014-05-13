@@ -30,17 +30,18 @@ func (s *StringAcumulator) String() string {
 }
 
 var execConfig struct {
-	SecretFilepath, Backend, BackendProtocol, BackendHost, Group, User string
-	EnvVars                                                            StringAcumulator
+	SecretFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group, User string
+	EnvVars                                                                                 StringAcumulator
 }
 
 func init() {
 	Exec.Run = execRun
-	Exec.Flag.StringVar(&execConfig.SecretFilepath, "k", "", "path to encryption key")
 	Exec.Flag.StringVar(&execConfig.Backend, "b", "redis", "backend to use")
+	Exec.Flag.StringVar(&execConfig.BackendAddress, "h", ":6379", "backend address")
+	Exec.Flag.StringVar(&execConfig.BackendNamespace, "n", "stocker", "backend namespace")
 	Exec.Flag.StringVar(&execConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
-	Exec.Flag.StringVar(&execConfig.BackendHost, "h", ":6379", "backend connection host (optionally including port)")
 	Exec.Flag.StringVar(&execConfig.Group, "g", "", "group to use for storing and retrieving data")
+	Exec.Flag.StringVar(&execConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
 	Exec.Flag.StringVar(&execConfig.User, "u", "", "user to execute the command as")
 	Exec.Flag.Var(&execConfig.EnvVars, "e", "environment variables")
 }
@@ -64,7 +65,7 @@ func execRun(cmd *Command, args []string) {
 		os.Exit(1)
 	}
 
-	b, err := backend.NewBackend(execConfig.Backend, execConfig.BackendProtocol, execConfig.BackendHost)
+	b, err := backend.NewBackend(execConfig.Backend, execConfig.BackendNamespace, execConfig.BackendProtocol, execConfig.BackendAddress)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
