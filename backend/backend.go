@@ -9,6 +9,7 @@ type Backend interface {
 	GetVariable(group, variable string) (string, error)
 	SetVariable(group, variable, value string) error
 	RemoveVariable(group, variable string) error
+	GetGroup(group string) (map[string]string, error)
 	RemoveGroup(group string) error
 }
 

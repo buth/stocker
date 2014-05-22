@@ -32,6 +32,7 @@ func (s *StringAcumulator) String() string {
 var execConfig struct {
 	SecretFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group, User string
 	EnvVars                                                                                 StringAcumulator
+	AllEnvVars                                                                              bool
 }
 
 func init() {
@@ -43,7 +44,8 @@ func init() {
 	Exec.Flag.StringVar(&execConfig.Group, "g", "", "group to use for storing and retrieving data")
 	Exec.Flag.StringVar(&execConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
 	Exec.Flag.StringVar(&execConfig.User, "u", "", "user to execute the command as")
-	Exec.Flag.Var(&execConfig.EnvVars, "e", "environment variables")
+	Exec.Flag.Var(&execConfig.EnvVars, "e", "environment variable to fetch")
+	Exec.Flag.BoolVar(&execConfig.AllEnvVars, "E", false, "fetch all environment variables")
 }
 
 func execRun(cmd *Command, args []string) {
@@ -85,32 +87,54 @@ func execRun(cmd *Command, args []string) {
 		env[components[0]] = components[1]
 	}
 
-	// Loop through the provided environment variables, looking for values
-	// first in the environment, and secondarally in the backend store.
-	// All errors are fatal.
+	// Create a new map to store crypted values to later write into the
+	// evironment variables map.
+	cryptedEnv := make(map[string]string)
+
+	// Check if we are supposed to pull all availble environement variables
+	// for the given group.
+	if execConfig.AllEnvVars {
+
+		variables, err := b.GetGroup(execConfig.Group)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		for variable, cryptedValue := range variables {
+			cryptedEnv[variable] = cryptedValue
+		}
+	}
+
+	// Handle individually specified environment variables. This can be done
+	// in conjunction with the all environment variables in order to garauntee
+	// the presense of certain values.
 	for _, variable := range execConfig.EnvVars {
 
-		// Set the key to use with the backend.
-		value := os.Getenv(variable)
-
-		// Check if we should search for a value.
-		if value == "" {
+		if _, ok := cryptedEnv[variable]; !ok {
 
 			cryptedValue, err := b.GetVariable(execConfig.Group, variable)
 			if err != nil {
-				log.Fatalf("%s: %s", variable, err)
+				fmt.Println(err)
+				os.Exit(1)
 			}
 
-			decryptedValue, err := c.DecryptString(cryptedValue)
-			if err != nil {
-				log.Fatalf("%s: %s", variable, err)
-			}
+			cryptedEnv[variable] = cryptedValue
+		}
+	}
 
-			value = decryptedValue
+	// Decode the crypted values map.
+	for variable, cryptedValue := range cryptedEnv {
+
+		// Try to decrypt the value.
+		decryptedValue, err := c.DecryptString(cryptedValue)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
 		}
 
-		// Format the statement.
-		env[variable] = value
+		// Set the decrypted value overwriting any existing value.
+		env[variable] = decryptedValue
 	}
 
 	// Create a list of environment key/value pairs and write the

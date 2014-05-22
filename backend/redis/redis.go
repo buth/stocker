@@ -46,8 +46,7 @@ func (r *redisBackend) Key(group string) []byte {
 
 func (r *redisBackend) GetVariable(group, variable string) (string, error) {
 
-	// Wait for a signal from the semaphore and then pull a new connection from
-	// the pool. Defer signalling the semaphore and closing the connection.
+	// Get a connection from the pool and defer its closing.
 	conn := r.pool.Get()
 	defer conn.Close()
 
@@ -57,8 +56,7 @@ func (r *redisBackend) GetVariable(group, variable string) (string, error) {
 
 func (r *redisBackend) SetVariable(group, variable, value string) error {
 
-	// Wait for a signal from the semaphore and then pull a new connection from
-	// the pool. Defer signalling the semaphore and closing the connection.
+	// Get a connection from the pool and defer its closing.
 	conn := r.pool.Get()
 	defer conn.Close()
 
@@ -69,8 +67,7 @@ func (r *redisBackend) SetVariable(group, variable, value string) error {
 
 func (r *redisBackend) RemoveVariable(group, variable string) error {
 
-	// Wait for a signal from the semaphore and then pull a new connection from
-	// the pool. Defer signalling the semaphore and closing the connection.
+	// Get a connection from the pool and defer its closing.
 	conn := r.pool.Get()
 	defer conn.Close()
 
@@ -79,10 +76,33 @@ func (r *redisBackend) RemoveVariable(group, variable string) error {
 	return err
 }
 
+func (r *redisBackend) GetGroup(group string) (map[string]string, error) {
+
+	// Create an empty map.
+	variables := make(map[string]string)
+
+	// Get a connection from the pool and defer its closing.
+	conn := r.pool.Get()
+	defer conn.Close()
+
+	// Get the values as a flat string.
+	values, err := redis.Strings(conn.Do("HGETALL", r.Key(group)))
+	if err != nil {
+		return variables, err
+	}
+
+	// Write the values into the variables map.
+	for i := 0; i < len(values)-1; i += 2 {
+		variables[values[i]] = values[i+1]
+	}
+
+	// Return the map with no error.
+	return variables, nil
+}
+
 func (r *redisBackend) RemoveGroup(group string) error {
 
-	// Wait for a signal from the semaphore and then pull a new connection from
-	// the pool. Defer signalling the semaphore and closing the connection.
+	// Get a connection from the pool and defer its closing.
 	conn := r.pool.Get()
 	defer conn.Close()
 
