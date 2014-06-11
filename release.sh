@@ -6,7 +6,7 @@ RELEASE_BRANCH=master
 
 # Add the source to the build directory.
 mkdir -p build/stocker-$VERSION
-rsync -av --exclude .git --exclude-from=.gitignore ./ build/stocker-$VERSION/
+rsync -av --exclude /build --exclude .git --exclude-from .gitignore ./ build/stocker-$VERSION/
 
 # Build the binaries.
 gox -output="build/stocker-$VERSION-{{.OS}}-{{.Arch}}/bin/stocker" -os="linux darwin"
