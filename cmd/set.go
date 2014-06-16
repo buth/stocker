@@ -9,12 +9,13 @@ import (
 )
 
 var Set = &Command{
-	UsageLine: "set [OPTIONS] VARIABLE [VARIABLE...]",
+	UsageLine: "set [options] variable [variable...]",
 	Short:     "set the values of the given variables",
 }
 
 var setConfig struct {
 	SecretFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group string
+	AllEnvVars                                                                        bool
 }
 
 func init() {
@@ -25,13 +26,14 @@ func init() {
 	Set.Flag.StringVar(&setConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
 	Set.Flag.StringVar(&setConfig.Group, "g", "", "group to use for storing and retrieving data")
 	Set.Flag.StringVar(&setConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
+	Set.Flag.BoolVar(&setConfig.AllEnvVars, "E", false, "use current environment when possible")
 }
 
 func setRun(cmd *Command, args []string) {
 
 	// Check the number of args.
 	if len(args) < 1 {
-		cmd.Usage()
+		cmd.Usage(2)
 	}
 
 	key, err := crypto.NewKeyFromFile(setConfig.SecretFilepath)

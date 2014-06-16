@@ -18,20 +18,24 @@ type Command struct {
 	// The first word in the line is taken to be the command name.
 	UsageLine string
 
-	// Short is the short description shown in the 'go help' output.
-	Short string
+	// Short is the short description shown in the 'stocker help' output.
+	Short, Long string
 
 	// Flag is a set of flags specific to this command.
 	Flag flag.FlagSet
 }
 
-func (c *Command) Usage() {
-	fmt.Fprintf(os.Stderr, "Usage:\n\n\tstocker %s\n\n", c.UsageLine)
-	if c.Flag.NFlag() > 0 {
-		c.Flag.Usage()
-	} else {
-		os.Exit(2)
+func (c *Command) Usage(code int) {
+
+	if c.Long != "" {
+		fmt.Fprintf(os.Stderr, "%s\n\n", c.Long)
 	}
+
+	fmt.Fprintf(os.Stderr, "Usage:\n\n\tstocker %s\n\nOptions:\n", c.UsageLine)
+
+	c.Flag.PrintDefaults()
+
+	os.Exit(code)
 }
 
 func (c *Command) Name() string {

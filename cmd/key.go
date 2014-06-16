@@ -6,7 +6,7 @@ import (
 )
 
 var Key = &Command{
-	UsageLine: "key FILENAME",
+	UsageLine: "key filename",
 	Short:     "create a key saved at the given filename",
 }
 
@@ -18,7 +18,7 @@ func keyRun(cmd *Command, args []string) {
 
 	// Check the number of args.
 	if len(args) != 1 {
-		cmd.Usage()
+		cmd.Usage(2)
 	}
 
 	// Set the filename.
