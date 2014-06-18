@@ -1,20 +1,18 @@
 package cmd
 
 import (
+	"bytes"
 	"code.google.com/p/go.crypto/ssh"
+	"code.google.com/p/go.crypto/ssh/agent"
 	"fmt"
 	"io/ioutil"
 	"log"
-	// "os"
-	"bytes"
-	"code.google.com/p/go.crypto/ssh/agent"
 	"net"
 	"os"
 	"os/exec"
 	"os/user"
 	"strconv"
 	"strings"
-	// "strings"
 	"syscall"
 )
 
@@ -35,14 +33,14 @@ func (s *StringAcumulator) String() string {
 }
 
 var execConfig struct {
-	StockerAddress, SecretFilepath, Group, User string
+	Address, PrivateFilepath, Group, User string
 }
 
 func init() {
 	Exec.Run = execRun
-	Exec.Flag.StringVar(&execConfig.StockerAddress, "a", ":2022", "address of the stocker server")
+	Exec.Flag.StringVar(&execConfig.Address, "a", ":2022", "address of the stocker server")
 	Exec.Flag.StringVar(&execConfig.Group, "g", "", "group to use for storing and retrieving data")
-	Exec.Flag.StringVar(&execConfig.SecretFilepath, "k", "", "path to a private SSH key")
+	Exec.Flag.StringVar(&execConfig.PrivateFilepath, "i", "", "path to an SSH private key")
 	Exec.Flag.StringVar(&execConfig.User, "u", "", "user to execute the command as")
 }
 
@@ -60,9 +58,9 @@ func execRun(cmd *Command, args []string) {
 
 	// Check if we should use an explicitly defined key on disk or consult
 	// ssh-agent.
-	if execConfig.SecretFilepath != "" {
+	if execConfig.PrivateFilepath != "" {
 
-		privateBytes, err := ioutil.ReadFile(execConfig.SecretFilepath)
+		privateBytes, err := ioutil.ReadFile(execConfig.PrivateFilepath)
 		if err != nil {
 			log.Fatal("Failed to read private key: " + err.Error())
 		}
@@ -95,7 +93,7 @@ func execRun(cmd *Command, args []string) {
 		}
 	}
 
-	client, err := ssh.Dial("tcp", execConfig.StockerAddress, config)
+	client, err := ssh.Dial("tcp", execConfig.Address, config)
 	if err != nil {
 		log.Fatal("Failed to dial: " + err.Error())
 	}

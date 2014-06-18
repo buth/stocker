@@ -16,7 +16,7 @@ import (
 )
 
 var serverConfig struct {
-	SecretFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group, Address string
+	SecretFilepath, PrivateFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group, Address string
 }
 
 var Server = &Command{
@@ -26,12 +26,13 @@ var Server = &Command{
 
 func init() {
 	Server.Run = serverRun
+	Server.Flag.StringVar(&serverConfig.Address, "a", ":2022", "address to listen on")
 	Server.Flag.StringVar(&serverConfig.Backend, "b", "redis", "backend to use")
 	Server.Flag.StringVar(&serverConfig.BackendAddress, "h", ":6379", "backend address")
 	Server.Flag.StringVar(&serverConfig.BackendNamespace, "n", "stocker", "backend namespace")
 	Server.Flag.StringVar(&serverConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
+	Server.Flag.StringVar(&serverConfig.PrivateFilepath, "i", "/etc/stocker/id_rsa", "path to an ssh private key")
 	Server.Flag.StringVar(&serverConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
-	Server.Flag.StringVar(&serverConfig.Address, "a", ":2022", "address to listen on")
 }
 
 func serverRun(cmd *Command, args []string) {
@@ -101,7 +102,7 @@ func serverRun(cmd *Command, args []string) {
 		PublicKeyCallback: certChecker.Authenticate,
 	}
 
-	privateBytes, err := ioutil.ReadFile("id_rsa")
+	privateBytes, err := ioutil.ReadFile(PrivateFilepath)
 	if err != nil {
 		log.Fatal("Failed to load private key")
 	}
