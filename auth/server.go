@@ -96,7 +96,7 @@ func (s *Server) exec(stdout io.Writer, environment map[string]string, commandSt
 			}
 
 			// Write the variable to the channel.
-			fmt.Fprintf(stdout, "%s=%s", variable, value)
+			fmt.Fprintf(stdout, "%s=%s\n", variable, value)
 		}
 
 	case "export":
