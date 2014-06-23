@@ -3,21 +3,20 @@ package cmd
 import (
 	"code.google.com/p/go.crypto/ssh"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"github.com/buth/stocker/auth"
 	"github.com/buth/stocker/backend"
 	"github.com/buth/stocker/crypto"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"time"
 )
 
 var serverConfig struct {
-	SecretFilepath, PrivateFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group, Address string
+	SecretFilepath, PrivateFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group, Address, ReadersURL, WritersURL string
 }
+
+var serverClient *http.Client
 
 var Server = &Command{
 	UsageLine: "server [options]",
@@ -33,30 +32,29 @@ func init() {
 	Server.Flag.StringVar(&serverConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
 	Server.Flag.StringVar(&serverConfig.PrivateFilepath, "i", "/etc/stocker/id_rsa", "path to an ssh private key")
 	Server.Flag.StringVar(&serverConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
-}
+	Server.Flag.StringVar(&serverConfig.ReadersURL, "r", "https://s3.amazonaws.com/newsdev-ops/keys.json", "retrieve reader public keys from this URL")
+	Server.Flag.StringVar(&serverConfig.WritersURL, "w", "https://s3.amazonaws.com/newsdev-ops/keys.json", "retrieve writer public keys from this URL")
 
-func serverRun(cmd *Command, args []string) {
-
-	// Build a new HTTP client and transport. We're only going to use it to
-	// make a single request, so we don't need keep-alive, etc.
-	client := &http.Client{
+	serverClient = &http.Client{
 		Transport: &http.Transport{
-			DisableKeepAlives:     true,
 			MaxIdleConnsPerHost:   1,
 			ResponseHeaderTimeout: time.Minute,
 		},
 	}
+}
+
+func serverFetchPublicKeys(url string) ([]ssh.PublicKey, error) {
 
 	// Fetch the public keys.
-	response, err := client.Get("https://s3.amazonaws.com/newsdev-ops/keys.json")
+	response, err := serverClient.Get(url)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	// Read out the entire body.
 	jsonResponse, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	// Build a raw keys object that reflects the expected structure of the JSON.
@@ -66,64 +64,33 @@ func serverRun(cmd *Command, args []string) {
 
 	// Try to parse the body of the response as JSON.
 	if err := json.Unmarshal(jsonResponse, &rawKeys); err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	// Build a new authorizer and iterate through the raw keys, parsing them
 	// and then adding them.
-	authorizer := auth.NewAuthorizer()
+	publicKeys := make([]ssh.PublicKey, 0, len(rawKeys))
 	for _, rawKey := range rawKeys {
 
 		// We're only interested in the key itself and whether or not there was an error.
 		publicKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(rawKey.Key))
 		if err != nil {
-			log.Fatal(err)
+			return publicKeys, err
 		}
 
-		// Add the key to the authorizer.
-		authorizer.AddKey(publicKey)
+		// Add the key to the list.
+		publicKeys = publicKeys[:len(publicKeys)+1]
+		publicKeys[len(publicKeys)-1] = publicKey
 	}
 
-	certChecker := &ssh.CertChecker{
-		IsAuthority: func(auth ssh.PublicKey) bool { return false },
-		UserKeyFallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+	return publicKeys, nil
+}
 
-			if authorizer.Authorize(key) {
-				return &ssh.Permissions{}, nil
-			}
+func serverRun(cmd *Command, args []string) {
 
-			return nil, errors.New("key not found")
-		},
-	}
-
-	// An SSH server is represented by a ServerConfig, which holds
-	// certificate details and handles authentication of ServerConns.
-	config := &ssh.ServerConfig{
-		PublicKeyCallback: certChecker.Authenticate,
-	}
-
-	privateBytes, err := ioutil.ReadFile(PrivateFilepath)
+	c, err := crypto.NewCrypterFromFile(serverConfig.SecretFilepath)
 	if err != nil {
-		log.Fatal("Failed to load private key")
-	}
-
-	private, err := ssh.ParsePrivateKey(privateBytes)
-	if err != nil {
-		log.Fatal("Failed to parse private key")
-	}
-
-	config.AddHostKey(private)
-
-	key, err := crypto.NewKeyFromFile(serverConfig.SecretFilepath)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	c, err := crypto.NewCrypter(key)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
 	b, err := backend.NewBackend(serverConfig.Backend, serverConfig.BackendNamespace, serverConfig.BackendProtocol, serverConfig.BackendAddress)
@@ -131,8 +98,37 @@ func serverRun(cmd *Command, args []string) {
 		log.Fatal(err)
 	}
 
-	server := auth.NewServer(config, b, c)
+	privateBytes, err := ioutil.ReadFile(serverConfig.PrivateFilepath)
+	if err != nil {
+		log.Fatal("failed to load private key")
+	}
 
+	private, err := ssh.ParsePrivateKey(privateBytes)
+	if err != nil {
+		log.Fatal("failed to parse private key")
+	}
+
+	// Create a new server using the specified Backend and Crypter.
+	server := auth.NewServer(b, c, private)
+
+	readers, err := serverFetchPublicKeys(serverConfig.ReadersURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	writers, err := serverFetchPublicKeys(serverConfig.WritersURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, reader := range readers {
+		server.AddReadKey(reader)
+	}
+
+	for _, writer := range writers {
+		server.AddWriteKey(writer)
+	}
+
+	// Start the server.
 	log.Fatal(server.ListenAndServe(serverConfig.Address))
-
 }

@@ -36,13 +36,7 @@ func setRun(cmd *Command, args []string) {
 		cmd.Usage(2)
 	}
 
-	key, err := crypto.NewKeyFromFile(setConfig.SecretFilepath)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	c, err := crypto.NewCrypter(key)
+	c, err := crypto.NewCrypterFromFile(setConfig.SecretFilepath)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)

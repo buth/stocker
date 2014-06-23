@@ -46,3 +46,8 @@ func (c *Command) Name() string {
 	}
 	return name
 }
+
+func (c *Command) Fatal(message string) {
+	fmt.Fprintf(os.Stderr, "%s: %s", c.Name(), message)
+	os.Exit(1)
+}

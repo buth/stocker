@@ -24,9 +24,14 @@ func keyRun(cmd *Command, args []string) {
 	// Set the filename.
 	filename := args[0]
 
-	// Create a new key and attempt to write it to a file.
-	key := crypto.NewKey()
-	if err := key.ToFile(filename); err != nil {
+	// Create a random crypter object.
+	c, err := crypto.NewRandomCrypter()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Write out the key to the given filename.
+	if err := c.ToFile(filename); err != nil {
 		log.Fatal(err)
 	}
 }

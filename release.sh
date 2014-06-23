@@ -9,7 +9,7 @@ mkdir -p build/stocker-$VERSION
 rsync -av --exclude /build --exclude .git --exclude-from .gitignore ./ build/stocker-$VERSION/
 
 # Build the binaries.
-gox -output="build/stocker-$VERSION-{{.OS}}-{{.Arch}}/bin/stocker" -os="linux darwin"
+gox -output="build/stocker-$VERSION-{{.OS}}-{{.Arch}}/bin/stocker" -osarch="linux/arm linux/386 linux/amd64 darwin/amd64"
 
 # Add the README and LICENSE to the binary directories.
 cd build

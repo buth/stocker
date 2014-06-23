@@ -5,6 +5,7 @@ import (
 	"code.google.com/p/go.crypto/ssh"
 	"container/list"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"github.com/buth/stocker/backend"
 	"github.com/buth/stocker/crypto"
@@ -12,57 +13,149 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 )
 
-func UnpackMessage(message []byte) ([]string, error) {
+const (
+	WriterUser = "w"
+	ReaderUser = "r"
+)
 
-	// Create a new buffer based on the message byte slice and initialize an
-	// empty list.
-	buf := bytes.NewBuffer(message)
-	l := list.New()
+type Server interface {
+	AddReadKey(key ssh.PublicKey)
+	AddWriteKey(key ssh.PublicKey)
+	ListenAndServe(address string) error
+	Stop() error
+}
 
-	// We need 4 bytes to define a number of bytes to read. If there are only
-	// 4 bytes left we can assume that the number is zero an move on.
-	for buf.Len() > 4 {
+type server struct {
+	backend backend.Backend
+	crypter crypto.Crypter
 
-		// Create a 4-byte unsigned integer to contain the read value from the
-		// message and read from the buffer.
-		var n uint32
-		if err := binary.Read(buf, binary.BigEndian, &n); err != nil {
-			return nil, err
+	// SSH
+	serverConfig *ssh.ServerConfig
+
+	// Keys.
+	writeKeys, readKeys     *list.List
+	writeKeysMu, readKeysMu sync.RWMutex
+}
+
+func NewServer(b backend.Backend, c crypto.Crypter, hostKey ssh.Signer) *server {
+
+	// Initialize a new server object with the backend and crypter.
+	s := &server{
+		backend: b,
+		crypter: c,
+	}
+
+	// Initialize the key lists.
+	s.writeKeys = list.New()
+	s.readKeys = list.New()
+
+	// Build a new certificate checker.
+	certChecker := &ssh.CertChecker{
+
+		IsAuthority:     NotAnAuthority,
+		UserKeyFallback: s.checkUserKey,
+	}
+
+	// An SSH server is represented by a ServerConfig, which holds certificate
+	// details and handles authentication of ServerConns.
+	s.serverConfig = &ssh.ServerConfig{
+		Config: ssh.Config{
+			Ciphers: []string{"aes256-ctr"},
+			MACs:    []string{"hmac-sha1"},
+		},
+		PublicKeyCallback: certChecker.Authenticate,
+	}
+
+	// Add the signing private key.
+	s.serverConfig.AddHostKey(hostKey)
+
+	return s
+}
+
+// AddWriteKey adds a public key that is authorized to connect to the server
+// and perform both read and write operations. If the has already been added
+// to the server, this function will update its status.
+func (s *server) AddWriteKey(key ssh.PublicKey) {
+
+	// Get the write keys lock for writing.
+	s.writeKeysMu.Lock()
+	defer s.writeKeysMu.Unlock()
+
+	// Serialze the key and convert it to an string (which is immutable).
+	serialized := string(key.Marshal())
+
+	// Add the key string to the write keys list.
+	s.writeKeys.PushBack(serialized)
+}
+
+func matchKey(key ssh.PublicKey, keys *list.List) bool {
+
+	// Serialze the key and convert it to an string.
+	serialized := SerializeKey(key)
+
+	// Add the key string to the write keys list.
+	for e := keys.Front(); e != nil; e = e.Next() {
+		if serialized == e.Value.(string) {
+			return true
 		}
-
-		// Convert the unsigned 4-byte integer to an int and read out the
-		// specified number of bytes. Store the resulting byte slice in the
-		// list.
-		l.PushBack(buf.Next(int(n)))
 	}
 
-	rval := make([]string, l.Len())
-	i := 0
-	for e := l.Front(); e != nil; e = e.Next() {
-		rval[i] = string(e.Value.([]byte))
-		i++
+	return false
+}
+
+func (s *server) matchWriteKey(key ssh.PublicKey) bool {
+
+	// Get the write keys lock for reading.
+	s.writeKeysMu.RLock()
+	defer s.writeKeysMu.RUnlock()
+
+	// Return the result of the generic match key function.
+	return matchKey(key, s.writeKeys)
+}
+
+// AddReaderKey adds a public key that is authorized to connect to the server
+// and perform only read operations. If the has already been added to the
+// server, this function will update its status.
+// to the server, this function will update its status.
+func (s *server) AddReadKey(key ssh.PublicKey) {
+
+	// Get the read keys lock for writing.
+	s.readKeysMu.Lock()
+	defer s.readKeysMu.Unlock()
+
+	// Serialze the key and convert it to an string (which is immutable).
+	serialized := SerializeKey(key)
+
+	// Add the key string to the read keys list.
+	s.readKeys.PushBack(serialized)
+}
+
+func (s *server) matchReadKey(key ssh.PublicKey) bool {
+
+	// Get the read keys lock for reading.
+	s.readKeysMu.RLock()
+	defer s.readKeysMu.RUnlock()
+
+	// Return the result of the generic match key function.
+	return matchKey(key, s.readKeys)
+}
+
+// checkUserKey determines whether or not the given public key is present for
+// the user indicated in the SSH connection meta-data.
+func (s *server) checkUserKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+
+	if u := conn.User(); (u == ReaderUser && s.matchReadKey(key)) || (u == WriterUser && s.matchWriteKey(key)) {
+		return &ssh.Permissions{}, nil
 	}
 
-	return rval, nil
+	// The default case is to return an error.
+	return nil, errors.New("unauthorized")
 }
 
-type Server struct {
-	Config  *ssh.ServerConfig
-	Backend backend.Backend
-	Crypter crypto.Crypter
-}
-
-func NewServer(s *ssh.ServerConfig, b backend.Backend, c crypto.Crypter) *Server {
-	return &Server{
-		Config:  s,
-		Backend: b,
-		Crypter: c,
-	}
-}
-
-func (s *Server) exec(stdout io.Writer, environment map[string]string, commandString string) error {
+func (s *server) exec(stdout io.Writer, canWrite bool, environment map[string]string, commandString string) error {
 
 	// Try to pull the group from the environment.
 	var group string
@@ -82,7 +175,7 @@ func (s *Server) exec(stdout io.Writer, environment map[string]string, commandSt
 	case "env":
 
 		// Pull the encrypted values from the store.
-		variables, err := s.Backend.GetGroup(group)
+		variables, err := s.backend.GetGroup(group)
 		if err != nil {
 			return err
 		}
@@ -90,7 +183,7 @@ func (s *Server) exec(stdout io.Writer, environment map[string]string, commandSt
 		for variable, cryptedValue := range variables {
 
 			// Attempt to decrypt the encrypted value.
-			value, err := s.Crypter.DecryptString(cryptedValue)
+			value, err := s.crypter.DecryptString(cryptedValue)
 			if err != nil {
 				return err
 			}
@@ -101,26 +194,36 @@ func (s *Server) exec(stdout io.Writer, environment map[string]string, commandSt
 
 	case "export":
 
+		// Check for write permission.
+		if !canWrite {
+			return ServerError{"unauthorized"}
+		}
+
 		// Parse the variable name and value from the argument.
 		argumentComponents := strings.SplitN(argument, `=`, 2)
 		variable := argumentComponents[0]
 		value := argumentComponents[1]
 
 		// Attempt to encrypt the value.
-		cryptedValue, err := s.Crypter.EncryptString(value)
+		cryptedValue, err := s.crypter.EncryptString(value)
 		if err != nil {
 			return err
 		}
 
 		// Save the encrypted value in the store.
-		if err := s.Backend.SetVariable(group, variable, cryptedValue); err != nil {
+		if err := s.backend.SetVariable(group, variable, cryptedValue); err != nil {
 			return err
 		}
 
 	case "unset":
 
+		// Check for write permission.
+		if !canWrite {
+			return ServerError{"unauthorized"}
+		}
+
 		// Assume the argument is a variable name and remove it.
-		if err := s.Backend.RemoveVariable(group, argument); err != nil {
+		if err := s.backend.RemoveVariable(group, argument); err != nil {
 			return err
 		}
 	}
@@ -128,7 +231,7 @@ func (s *Server) exec(stdout io.Writer, environment map[string]string, commandSt
 	return nil
 }
 
-func (s *Server) handleRequests(channel ssh.Channel, in <-chan *ssh.Request) {
+func (s *server) handleRequests(channel ssh.Channel, canWrite bool, in <-chan *ssh.Request) {
 
 	// Close the connection when we return.
 	defer channel.Close()
@@ -182,13 +285,13 @@ func (s *Server) handleRequests(channel ssh.Channel, in <-chan *ssh.Request) {
 			exitStatusBuffer := bytes.NewBuffer([]byte{})
 
 			// Run the command, reporting any error as a failure.
-			if err := s.exec(channel, environment, payload[0]); err != nil {
+			if err := s.exec(channel, canWrite, environment, payload[0]); err != nil {
 
 				// Write the error message to the log.
 				log.Println(err)
-				binary.Write(exitStatusBuffer, binary.LittleEndian, uint32(1))
+				binary.Write(exitStatusBuffer, binary.BigEndian, uint32(1))
 			} else {
-				binary.Write(exitStatusBuffer, binary.LittleEndian, uint32(0))
+				binary.Write(exitStatusBuffer, binary.BigEndian, uint32(0))
 			}
 
 			// Write the exit status.
@@ -205,7 +308,31 @@ func (s *Server) handleRequests(channel ssh.Channel, in <-chan *ssh.Request) {
 	}
 }
 
-func (s *Server) ListenAndServe(address string) error {
+func (s *server) handleChannels(canWrite bool, in <-chan ssh.NewChannel) {
+
+	// Pull channels off the incoming channel.
+	for newChannel := range in {
+
+		// Only accept sessions.
+		if newChannel.ChannelType() != "session" {
+			newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
+
+			continue
+		}
+
+		// Attempt to accecpt the session channel.
+		channel, requests, err := newChannel.Accept()
+		if err != nil {
+			log.Printf("server: could not accept channel: %s\n", err.Error())
+			continue
+		}
+
+		go s.handleRequests(channel, canWrite, requests)
+	}
+}
+
+// ListenAndServe starts a new SSH server listening on the given address.
+func (s *server) ListenAndServe(address string) error {
 
 	// Start listening.
 	listener, err := net.Listen("tcp", address)
@@ -218,37 +345,40 @@ func (s *Server) ListenAndServe(address string) error {
 		// Accept a new connection.
 		nConn, err := listener.Accept()
 		if err != nil {
-			log.Println("server: failed to accept incoming connection")
+			return err
 		}
 
-		_, chans, reqs, err := ssh.NewServerConn(nConn, s.Config)
+		sConn, chans, reqs, err := ssh.NewServerConn(nConn, s.serverConfig)
 		if err != nil {
 			log.Println("server: failed to handshake")
 			continue
+		}
+
+		// Determine whether or not the user can write.
+		canWrite := false
+		if sConn.User() == WriterUser {
+			canWrite = true
 		}
 
 		// The incoming Request channel must be serviced.
 		go ssh.DiscardRequests(reqs)
 
 		// Service the incoming Channel channel.
-		for newChannel := range chans {
-
-			// Only accept sessions.
-			if newChannel.ChannelType() != "session" {
-				newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
-				continue
-			}
-
-			// Attempt to accecpt the session channel.
-			channel, requests, err := newChannel.Accept()
-			if err != nil {
-				log.Println("server: could not accept channel.")
-				continue
-			}
-
-			go s.handleRequests(channel, requests)
-		}
+		go s.handleChannels(canWrite, chans)
 	}
 
 	return nil
+}
+
+func (s *server) Stop() error {
+
+	return nil
+}
+
+type ServerError struct {
+	Err string
+}
+
+func (e ServerError) Error() string {
+	return fmt.Sprintf("server: %s", e.Err)
 }
