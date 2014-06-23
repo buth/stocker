@@ -34,6 +34,8 @@ type server struct {
 
 	// SSH
 	serverConfig *ssh.ServerConfig
+	listeners    *list.List
+	listenersMu  sync.Mutex
 
 	// Keys.
 	writeKeys, readKeys     *list.List
@@ -47,6 +49,9 @@ func NewServer(b backend.Backend, c crypto.Crypter, hostKey ssh.Signer) *server 
 		backend: b,
 		crypter: c,
 	}
+
+	// Initialize the listener list.
+	s.listeners = list.New()
 
 	// Initialize the key lists.
 	s.writeKeys = list.New()
@@ -334,11 +339,19 @@ func (s *server) handleChannels(canWrite bool, in <-chan ssh.NewChannel) {
 // ListenAndServe starts a new SSH server listening on the given address.
 func (s *server) ListenAndServe(address string) error {
 
+	// Get the listeners lock.
+	s.listenersMu.Lock()
+
 	// Start listening.
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
+		s.listenersMu.Unlock()
 		return err
 	}
+
+	// Add the listener to the list and release the lock.
+	s.listeners.PushBack(listener)
+	s.listenersMu.Unlock()
 
 	for {
 
@@ -371,6 +384,19 @@ func (s *server) ListenAndServe(address string) error {
 }
 
 func (s *server) Stop() error {
+
+	// Get the listeners lock and defer its closing.
+	s.listenersMu.Lock()
+	defer s.listenersMu.Unlock()
+
+	for e := s.listeners.Front(); e != nil; e = e.Next() {
+
+		if err := e.Value.(net.Listener).Close(); err != nil {
+			return err
+		}
+
+		s.listeners.Remove(e)
+	}
 
 	return nil
 }

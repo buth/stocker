@@ -95,8 +95,8 @@ func TestServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := server.ListenAndServe(`:2022`); err != nil {
-		t.Fatal(err)
-	}
+	go server.ListenAndServe(`:2022`)
+
+	server.Stop()
 
 }
