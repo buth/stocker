@@ -309,7 +309,7 @@ func TestClientSetEnv(t *testing.T) {
 
 	if out, err := client.Run("env", nil); err != nil {
 		t.Error(err)
-	} else if out != "A=setting" {
+	} else if out != "A=setting\n" {
 		t.Error(out)
 	}
 
