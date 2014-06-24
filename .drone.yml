@@ -8,9 +8,8 @@ env:
   - AWS_SECRET_ACCESS_KEY={{AWS_SECRET_ACCESS_KEY}}
 
 script:
-  - ln -s `pwd` $GOPATH/src/github.com/buth/stocker
-  - go get -d -v ./...
-  - go test -v ./...
+  - make deps
+  - make test
   - ./release.sh
 
 notify:

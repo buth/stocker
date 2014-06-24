@@ -9,6 +9,9 @@ all: ${GOBIN}/stocker
 ${GOBIN}/stocker: deps
 	go install -v github.com/buth/stocker
 
+test: deps
+	go test -v github.com/buth/stocker/...
+
 deps: ${GOPATH}/src/github.com/buth/stocker
 	go get -v -d github.com/buth/stocker
 
