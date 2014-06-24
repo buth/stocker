@@ -11,34 +11,61 @@ var commands = []*cmd.Command{
 	cmd.Key,
 	cmd.Set,
 	cmd.Exec,
+	cmd.Server,
+}
+
+func Usage(code int) {
+	fmt.Fprint(os.Stderr, `Stocker is a tool for managing secure configuration information.
+
+Usage:
+
+	stocker command [arguments]
+
+The commands are:
+
+`)
+
+	// Print each command and its short description.
+	for _, command := range commands {
+		fmt.Fprintf(os.Stderr, "    %-12s %s\n", command.Name(), command.Short)
+	}
+
+	fmt.Fprint(os.Stderr, `
+Use "stocker help [topic]" for more information about that topic.
+
+`)
+
+	os.Exit(code)
 }
 
 func main() {
 	flag.Parse()
 
-	// Check to make sure that a command has been specified.
-	if flag.NArg() < 1 {
-		fmt.Print("Stocker is a tool for managing secure configuration information.\n\nUsage:\n\n\tstocker COMMAND [ARG...]\n\nThe commands are:\n\n")
-		for _, command := range commands {
-			fmt.Printf("\t%s\t%s\n", command.Name(), command.Short)
-		}
-		fmt.Print("\n")
-		os.Exit(2)
+	if flag.NArg() == 0 {
+		Usage(2)
 	}
 
-	// Iterate through the commands.
+	if flag.Arg(0) == "help" {
+		switch flag.NArg() {
+		case 1:
+			Usage(0)
+		case 2:
+			for _, command := range commands {
+				if command.Name() == flag.Arg(1) {
+					command.Usage(0)
+				}
+			}
+		}
+		Usage(2)
+	}
+
 	for _, command := range commands {
-		if command.Name() == flag.Arg(0) && command.Run != nil {
-
-			// Parse everything but the name of the command itself.
+		if command.Name() == flag.Arg(0) {
+			command.Flag.Usage = func() { command.Usage(2) }
 			command.Flag.Parse(flag.Args()[1:])
-
-			// Check the args.
-			args := command.Flag.Args()
-
-			// Run the Command!
-			command.Run(command, args)
+			command.Run(command, command.Flag.Args())
 			return
 		}
 	}
+	Usage(2)
 }

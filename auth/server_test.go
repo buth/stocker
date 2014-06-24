@@ -1,0 +1,114 @@
+package auth
+
+import (
+	"code.google.com/p/go.crypto/ssh"
+	"github.com/buth/stocker/backend/redis"
+	"github.com/buth/stocker/crypto"
+	"testing"
+)
+
+var ServerTestPublicKeys = [][]byte{
+	[]byte(`ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCtwmpevjupv2ru+JWxxx7s6iyN+yoGICO9lbiMs86iODixEu0mRKdO3aCCAvmue/6OS7toH3wXOpBYdrrGimuETg4R/fa8Xtwh1U+ga8/GqKPFYuvxLniJrvI3zhD9ggG+RM9doGLPcBivFA2tbnHkUW52oJHgTvhaC9GkGvv5xsAk7SdGdAI8O96h4o/7h93WWNt6Zss4dAyi1xT0k7+Jp5tVzFvILNZyFDXZ+lL540OIBPlPpjUCBaXWC4bIGuVFMYEOLtEeURVzY0X42JfFLEVQTGRSNZsVkd6QzRbr4JpLWosEWNO1YIlhohmqdtSpjKnWd8bLAYoi1qPUgOXtZw6Gn6LeuMzp45kwPtg75C6zoUYlDGAVVV1EbMez9pubIuAARJGvE78R4d6XK5EioFtJjb0z4M0mw2lw0YapTtKDTXE/AA8vlpsq1RjdlHZWLS3CpSr0a+WqjPY0HvSPcD6FvxUW7toqXHqgzozV9S59L7aihDi6b1PtS5EXLg5fwujnwyjeYO9NjGDRVFvr5j7orVkkfgwNDhiFva/F4rjwaYH3Rp5Gmdt45Qq5wOn+P5reLB7gVUh1jzvSfgZXWRG9mkItztuSdPHLB4AQC77gWAa7QZZpbI+AmIGT3+5+8o8wBypmFzay90nJ+aYcEETd9sRaZu13Yaf8iHIRtQ== key1
+`),
+	[]byte(`ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDLOLIHVpcAKVlP1VYBavuGRAAnTkuyOfQ986K8dEP45aeDg1vm+CuFnWcMzahPwoV+TeiMTW/82IPTA5QNolJ0ytcYNG07ksRABJ5ecoEtitkgUGHKheMvh/hypEZOcsciDHoEfNvPHMB95wl+DSlag224SfRflzO18InRLkv2oNRBxoITe+ZjEhyxfechySVZbXTvOjKmGUBVf8WtZ2d/XjOHZ4HcynB7vvl6Doq64dQJgF7DDPNoqT6puR0SRCcAWfnizZHiFGnOdN4oaz6g4ZU6Gk/Ymi5R2sZcwalIlvEDOm58osVVxSzM9LQuGw9K/JNq5p8hNJNayNaEqGDi8T2qX4RP0In9MJip60x9RFvT53+tUwc0maScE+K74cqlYdMx6jReGE67ec0zazAn17Qgqi5hh3k/U4mnzqS07FpmRGyyU4LDLrxyKI+Bh4pDA40hU5X7bYxTlUpP2uKxkomHUYBaNFSa6dw0NfP63Y8hvOnhkIsS9PWQTASxCA2kRCSDjg1Ju50C3xtMoyRKvEgDdod4rlBjpeIZe+e+f4p64125/msr5xbVSh7fDMpUR+UxTsTzjuefrQttYopVdbpLlQ9cZrhuUQg8M3gt5f03YL6klTYt+ep6qa1H8LChUFj8KBtZzc9zbfiFEwiLJ4ridcveTyPX8JHNgKdGzw== key2
+`),
+	[]byte(`ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCuxW1WrnO6ECQC10aUEI9qOmysWVMzwi+veHdL0FSKuGFxkxQc5S+Jv6wI1n7KsyuOFK3vJGy6R4XAG88Bu/E4lVS7JnteoiLqqm9morvvmbLE39gfPjDm4kzgvZ8MZ5NmF0bZ+v/lE+bcQGmlOWgxDo0m1hh7avCKPC+zC6lYFaMdHG0lmD5IPxmLLOA7w+aqhIEWwpGdLkw1Z5dhdq39ymz2hjjF0emRMNc+jkwbA8GLpklbWHiErvjD9Ax2986ujGFy54lbeMv6avDkn8H22djYgD7jBVi4/0N6z+jw28BaS3AdR3pv7bQiX/SN1HmoGQ4XXaE1SXfsrCmxMK0mOrauzLGveFYvv/2i+oeTWK7BxMol1LAlTt7hXUnHFKqTNKZQNwe8xq12OWhILCM25Cg7CLl+qNMt0H+C9RNRvYjiEvLsByQ/SrGLd1wdjBv4+r+BKxMGykoxWnM0d7Q5cwIqOdTM123exFT9Sj8GtKb2XeB6s21Dnq6Ic7sV+eTyKhJ9HcRY5OUl3gQ1X+dMpzRsp8jiSns5OpwzJC+ekvizoy5jljYwIEqq1Zu+O2fICtRjVOnExQK7thtdjEvcmjhHK2WNyfv8zrPPe28o11ZmoYqxQeKuyw8DO4fm2vi/z6UFEq/2YaPNn7BG2neL8hiksqEwd0t9lZg6akZnSQ== key3
+`),
+}
+
+var ServerTestPrivateKey = []byte(`-----BEGIN RSA PRIVATE KEY-----
+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
+-----END RSA PRIVATE KEY-----
+`)
+
+func newTestServer() (Server, error) {
+
+	// Create a new backend object.
+	b := redis.New("test", "tcp", "127.0.0.1:6379")
+
+	// Create a new crypter.
+	c, err := crypto.NewRandomCrypter()
+	if err != nil {
+		return nil, err
+	}
+
+	private, _ := ssh.ParsePrivateKey(ServerTestPrivateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	s := NewServer(b, c, private)
+
+	for _, publicKey := range ServerTestPublicKeys {
+		publicKeyParsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+		if err != nil {
+			return s, err
+		}
+
+		s.AddReadKey(publicKeyParsed)
+		s.AddWriteKey(publicKeyParsed)
+	}
+
+	return s, nil
+}
+
+func TestServer(t *testing.T) {
+
+	server, err := newTestServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go server.ListenAndServe(`:2022`)
+
+	server.Stop()
+
+}

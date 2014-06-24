@@ -1,13 +1,16 @@
 package crypto
 
 import (
+	"bytes"
+	"crypto/rand"
 	"fmt"
+	"io"
 	"testing"
 )
 
 func TestEncodeString(t *testing.T) {
 
-	c, err := NewCrypter(NewKey())
+	c, err := NewRandomCrypter()
 	if err != nil {
 		t.Error(err)
 	}
@@ -35,18 +38,21 @@ func TestEncodeString(t *testing.T) {
 	}
 }
 
-func TestRepeatedEncoding(t *testing.T) {
+func TestSeperateEncoding(t *testing.T) {
 
-	key := NewKey()
-
-	c1, err := NewCrypter(key)
-	if err != nil {
-		t.Error(err)
+	key := make([]byte, HmacKeyLength+SymetricKeyLength)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		t.Fatal(err)
 	}
 
-	c2, err := NewCrypter(key)
+	c1, err := NewCrypter(bytes.NewBuffer(key))
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
+	}
+
+	c2, err := NewCrypter(bytes.NewBuffer(key))
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
@@ -54,14 +60,14 @@ func TestRepeatedEncoding(t *testing.T) {
 
 	ciphertext1, err := c1.EncryptString(originaltext)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	fmt.Println(ciphertext1)
 
 	ciphertext2, err := c2.EncryptString(originaltext)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	fmt.Println(ciphertext2)
@@ -71,23 +77,26 @@ func TestRepeatedEncoding(t *testing.T) {
 	}
 }
 
-func TestSeperateEncoding(t *testing.T) {
+func TestRepeatedEncoding(t *testing.T) {
 
-	c, _ := NewCrypter(NewKey())
+	c, err := NewRandomCrypter()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
 	fmt.Println(originaltext)
 
 	ciphertext1, err := c.EncryptString(originaltext)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	fmt.Println(ciphertext1)
 
 	ciphertext2, err := c.EncryptString(originaltext)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	fmt.Println(ciphertext2)
@@ -100,9 +109,9 @@ func TestSeperateEncoding(t *testing.T) {
 func BenchmarkEncodeString(b *testing.B) {
 	b.StopTimer()
 
-	c, err := NewCrypter(NewKey())
+	c, err := NewRandomCrypter()
 	if err != nil {
-		b.Error(err)
+		b.Fatal(err)
 	}
 
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
@@ -120,9 +129,9 @@ func BenchmarkEncodeStringCold(b *testing.B) {
 	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
 
 	for i := 0; i < b.N; i++ {
-		c, err := NewCrypter(NewKey())
+		c, err := NewRandomCrypter()
 		if err != nil {
-			b.Error(err)
+			b.Fatal(err)
 		}
 		b.StartTimer()
 		c.EncryptString(originaltext)

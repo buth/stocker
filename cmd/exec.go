@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/buth/stocker/backend"
-	"github.com/buth/stocker/crypto"
-	"log"
+	"github.com/buth/stocker/auth"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/user"
@@ -14,7 +13,7 @@ import (
 )
 
 var Exec = &Command{
-	UsageLine: "exec [OPTIONS] COMMAND [ARG...]",
+	UsageLine: "exec [options] command [argument...]",
 	Short:     "execute a command with the given environment",
 }
 
@@ -30,53 +29,50 @@ func (s *StringAcumulator) String() string {
 }
 
 var execConfig struct {
-	SecretFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group, User string
-	EnvVars                                                                                 StringAcumulator
-	AllEnvVars                                                                              bool
+	Address, PrivateFilepath, Group, User string
 }
 
 func init() {
 	Exec.Run = execRun
-	Exec.Flag.StringVar(&execConfig.Backend, "b", "redis", "backend to use")
-	Exec.Flag.StringVar(&execConfig.BackendAddress, "h", ":6379", "backend address")
-	Exec.Flag.StringVar(&execConfig.BackendNamespace, "n", "stocker", "backend namespace")
-	Exec.Flag.StringVar(&execConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
+	Exec.Flag.StringVar(&execConfig.Address, "a", ":2022", "address of the stocker server")
 	Exec.Flag.StringVar(&execConfig.Group, "g", "", "group to use for storing and retrieving data")
-	Exec.Flag.StringVar(&execConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
+	Exec.Flag.StringVar(&execConfig.PrivateFilepath, "i", "", "path to an SSH private key")
 	Exec.Flag.StringVar(&execConfig.User, "u", "", "user to execute the command as")
-	Exec.Flag.Var(&execConfig.EnvVars, "e", "environment variable to fetch")
-	Exec.Flag.BoolVar(&execConfig.AllEnvVars, "E", false, "fetch all environment variables")
 }
 
 func execRun(cmd *Command, args []string) {
 
-	// Check the number of args.
-	if len(args) < 1 {
-		cmd.Usage()
-	}
-
-	key, err := crypto.NewKeyFromFile(execConfig.SecretFilepath)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	c, err := crypto.NewCrypter(key)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	b, err := backend.NewBackend(execConfig.Backend, execConfig.BackendNamespace, execConfig.BackendProtocol, execConfig.BackendAddress)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
 	// Find the expanded path to cmd.
 	command, err := exec.LookPath(args[0])
 	if err != nil {
-		log.Fatalf("%s: command not found", args[0])
+		cmd.Fatal(fmt.Sprintf("%s: command not found", args[0]))
+	}
+
+	// Read the private key from disk if a filepath has been provided.
+	var privateKey []byte
+	if setConfig.PrivateFilepath != "" {
+		privateKeyBytes, err := ioutil.ReadFile(setConfig.PrivateFilepath)
+		if err != nil {
+			cmd.Fatal(err.Error())
+		}
+		privateKey = privateKeyBytes
+	}
+
+	// Get a new client object. If the private key is nil, the method will
+	// attempt to use ssh-agent.
+	client, err := auth.NewClient(auth.WriterUser, setConfig.Address, privateKey)
+	if err != nil {
+		cmd.Fatal(err.Error())
+	}
+
+	// Create an environment specific to this variable.
+	runEnv := map[string]string{
+		"GROUP": execConfig.Group,
+	}
+
+	stockerEnv, err := client.Run("env", runEnv)
+	if err != nil {
+		cmd.Fatal(err.Error())
 	}
 
 	// Create a map of environment variables to be passed to cmd and
@@ -87,54 +83,13 @@ func execRun(cmd *Command, args []string) {
 		env[components[0]] = components[1]
 	}
 
-	// Create a new map to store crypted values to later write into the
-	// evironment variables map.
-	cryptedEnv := make(map[string]string)
-
-	// Check if we are supposed to pull all availble environement variables
-	// for the given group.
-	if execConfig.AllEnvVars {
-
-		variables, err := b.GetGroup(execConfig.Group)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+	// Parse the stocker environment and save it into the env.
+	pairs := strings.Split(stockerEnv, "\n")
+	for _, pair := range pairs {
+		components := strings.SplitN(pair, "=", 2)
+		if len(components) == 2 {
+			env[components[0]] = components[1]
 		}
-
-		for variable, cryptedValue := range variables {
-			cryptedEnv[variable] = cryptedValue
-		}
-	}
-
-	// Handle individually specified environment variables. This can be done
-	// in conjunction with the all environment variables in order to garauntee
-	// the presense of certain values.
-	for _, variable := range execConfig.EnvVars {
-
-		if _, ok := cryptedEnv[variable]; !ok {
-
-			cryptedValue, err := b.GetVariable(execConfig.Group, variable)
-			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-
-			cryptedEnv[variable] = cryptedValue
-		}
-	}
-
-	// Decode the crypted values map.
-	for variable, cryptedValue := range cryptedEnv {
-
-		// Try to decrypt the value.
-		decryptedValue, err := c.DecryptString(cryptedValue)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-
-		// Set the decrypted value overwriting any existing value.
-		env[variable] = decryptedValue
 	}
 
 	// Create a list of environment key/value pairs and write the
@@ -150,16 +105,16 @@ func execRun(cmd *Command, args []string) {
 
 		u, err := user.Lookup(execConfig.User)
 		if err != nil {
-			log.Fatal(err)
+			cmd.Fatal(err.Error())
 		}
 
 		uid, err := strconv.Atoi(u.Uid)
 		if err != nil {
-			log.Fatal(err)
+			cmd.Fatal(err.Error())
 		}
 
 		if err := syscall.Setuid(uid); err != nil {
-			log.Fatal(err)
+			cmd.Fatal(err.Error())
 		}
 	}
 
