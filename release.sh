@@ -1,18 +1,13 @@
 #!/bin/bash
 set -e
 
-VERSION=v0.4.0
 RELEASE_BRANCH=master
 
-# Add the source to the build directory.
-mkdir -p build/stocker-$VERSION
-rsync -av --exclude /build --exclude .git --exclude-from .gitignore ./ build/stocker-$VERSION/
+# Build the release binaries.
+make release
 
-# Build the binaries.
-gox -output="build/stocker-$VERSION-{{.OS}}-{{.Arch}}/bin/stocker" -osarch="linux/arm linux/386 linux/amd64 darwin/amd64"
-
-# Add the README and LICENSE to the binary directories.
-cd build
+# Add necessary files.
+cd .builds
 for dir in `ls`
 do
 	cp ../README.md ../LICENSE $dir/
@@ -32,5 +27,5 @@ fi
 
 for file in `ls`
 do
-	aws s3 cp $file s3://newsdev-pub/stocker/$VERSION/$file
+	aws s3 cp $file s3://newsdev-pub/stocker/`cat VERSION`/$file
 done

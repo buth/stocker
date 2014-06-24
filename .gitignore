@@ -23,5 +23,5 @@ _testmain.go
 
 .DS_Store
 .vagrant
-build
+.builds
 .tmp

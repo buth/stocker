@@ -1,19 +1,27 @@
+VERSION = $(shell cat VERSION)
 GOPATH = $(shell pwd)/.tmp
 GOBIN = ${GOPATH}/bin
+BUILDS = $(shell pwd)/.builds
 
 install: all
 	cp ${GOBIN}/stocker /usr/local/bin
 
 all: ${GOBIN}/stocker
 
-${GOBIN}/stocker: deps
+${GOBIN}/stocker: dependencies
 	go install -v github.com/buth/stocker
 
-test: deps
+test: dependencies
 	go test -v github.com/buth/stocker/...
 
-deps: ${GOPATH}/src/github.com/buth/stocker
+release: dependencies ${BUILDS} ${BUILDS}/stocker-${VERSION}
+	gox -output="${BUILDS}/stocker-${VERSION}-{{.OS}}-{{.Arch}}/bin/stocker" -osarch="linux/arm linux/386 linux/amd64 darwin/amd64" github.com/buth/stocker
+
+dependencies: ${GOPATH}/src/github.com/buth/stocker
 	go get -v -d github.com/buth/stocker
+
+${BUILDS}/stocker-${VERSION}: ${GOPATH}/src/github.com/buth/stocker
+	cp -r ${GOPATH}/src/github.com/buth/stocker ${BUILDS}/stocker-${VERSION}
 
 ${GOPATH}/src/github.com/buth/stocker: ${GOPATH}
 	mkdir -p ${GOPATH}/src/github.com/buth/stocker
@@ -25,5 +33,8 @@ ${GOBIN}: ${GOPATH}
 ${GOPATH}:
 	mkdir -p ${GOPATH}
 
+${BUILDS}:
+	mkdir -p ${BUILDS}
+
 clean:
-	rm -rf .tmp
+	rm -rf ${GOPATH} ${BUILDS}
