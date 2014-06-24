@@ -1,13 +1,9 @@
 package cmd
 
 import (
-	"bytes"
-	"code.google.com/p/go.crypto/ssh"
-	"code.google.com/p/go.crypto/ssh/agent"
 	"fmt"
+	"github.com/buth/stocker/auth"
 	"io/ioutil"
-	"log"
-	"net"
 	"os"
 	"os/exec"
 	"os/user"
@@ -49,69 +45,34 @@ func execRun(cmd *Command, args []string) {
 	// Find the expanded path to cmd.
 	command, err := exec.LookPath(args[0])
 	if err != nil {
-		log.Fatalf("%s: command not found", args[0])
+		cmd.Fatal(fmt.Sprintf("%s: command not found", args[0]))
 	}
 
-	// Create an empty SSH configuration as we don't yet know what
-	// authentication methods to use.
-	config := &ssh.ClientConfig{}
-
-	// Check if we should use an explicitly defined key on disk or consult
-	// ssh-agent.
-	if execConfig.PrivateFilepath != "" {
-
-		privateBytes, err := ioutil.ReadFile(execConfig.PrivateFilepath)
+	// Read the private key from disk if a filepath has been provided.
+	var privateKey []byte
+	if setConfig.PrivateFilepath != "" {
+		privateKeyBytes, err := ioutil.ReadFile(setConfig.PrivateFilepath)
 		if err != nil {
-			log.Fatal("Failed to read private key: " + err.Error())
+			cmd.Fatal(err.Error())
 		}
-
-		private, err := ssh.ParsePrivateKey(privateBytes)
-		if err != nil {
-			log.Fatal("Failed to parse private key: " + err.Error())
-		}
-
-		config.Auth = []ssh.AuthMethod{
-			ssh.PublicKeys(private),
-		}
-	} else {
-
-		sshAuthSock := os.Getenv(`SSH_AUTH_SOCK`)
-
-		socket, err := net.Dial("unix", sshAuthSock)
-		if err != nil {
-			log.Fatal("Failed to to open connection to ssh-agent: " + err.Error())
-		}
-
-		sshAgent := agent.NewClient(socket)
-		signers, err := sshAgent.Signers()
-		if err != nil {
-			log.Fatal("Failed to retrieve signers from ssh-agent: " + err.Error())
-		}
-
-		config.Auth = []ssh.AuthMethod{
-			ssh.PublicKeys(signers...),
-		}
+		privateKey = privateKeyBytes
 	}
 
-	client, err := ssh.Dial("tcp", execConfig.Address, config)
+	// Get a new client object. If the private key is nil, the method will
+	// attempt to use ssh-agent.
+	client, err := auth.NewClient(auth.WriterUser, setConfig.Address, privateKey)
 	if err != nil {
-		log.Fatal("Failed to dial: " + err.Error())
+		cmd.Fatal(err.Error())
 	}
 
-	// Each ClientConn can support multiple interactive sessions,
-	// represented by a Session.
-	session, err := client.NewSession()
+	// Create an environment specific to this variable.
+	runEnv := map[string]string{
+		"GROUP": execConfig.Group,
+	}
+
+	stockerEnv, err := client.Run("env", runEnv)
 	if err != nil {
-		log.Fatal("Failed to create session: " + err.Error())
-	}
-	defer session.Close()
-
-	// Once a Session is created, you can execute a single command on
-	// the remote side using the Run method.
-	var b bytes.Buffer
-	session.Stdout = &b
-	if err := session.Run("env"); err != nil {
-		log.Fatal("Failed to run: " + err.Error())
+		cmd.Fatal(err.Error())
 	}
 
 	// Create a map of environment variables to be passed to cmd and
@@ -123,7 +84,7 @@ func execRun(cmd *Command, args []string) {
 	}
 
 	// Parse the stocker environment and save it into the env.
-	pairs := strings.Split(b.String(), "\n")
+	pairs := strings.Split(stockerEnv, "\n")
 	for _, pair := range pairs {
 		components := strings.SplitN(pair, "=", 2)
 		if len(components) == 2 {
@@ -144,16 +105,16 @@ func execRun(cmd *Command, args []string) {
 
 		u, err := user.Lookup(execConfig.User)
 		if err != nil {
-			log.Fatal(err)
+			cmd.Fatal(err.Error())
 		}
 
 		uid, err := strconv.Atoi(u.Uid)
 		if err != nil {
-			log.Fatal(err)
+			cmd.Fatal(err.Error())
 		}
 
 		if err := syscall.Setuid(uid); err != nil {
-			log.Fatal(err)
+			cmd.Fatal(err.Error())
 		}
 	}
 

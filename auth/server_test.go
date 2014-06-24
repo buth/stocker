@@ -81,11 +81,23 @@ func newTestServer() (Server, error) {
 	}
 
 	private, _ := ssh.ParsePrivateKey(ServerTestPrivateKey)
-	// if err != nil {
-	// 	log.Fatal("failed to parse private key")
-	// }
+	if err != nil {
+		return nil, err
+	}
 
-	return NewServer(b, c, private), nil
+	s := NewServer(b, c, private)
+
+	for _, publicKey := range ServerTestPublicKeys {
+		publicKeyParsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+		if err != nil {
+			return s, err
+		}
+
+		s.AddReadKey(publicKeyParsed)
+		s.AddWriteKey(publicKeyParsed)
+	}
+
+	return s, nil
 }
 
 func TestServer(t *testing.T) {

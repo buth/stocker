@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	WriterUser = "w"
-	ReaderUser = "r"
+	WriterUser = `w`
+	ReaderUser = `r`
 )
 
 type Server interface {
@@ -207,7 +207,14 @@ func (s *server) exec(stdout io.Writer, canWrite bool, environment map[string]st
 		// Parse the variable name and value from the argument.
 		argumentComponents := strings.SplitN(argument, `=`, 2)
 		variable := argumentComponents[0]
-		value := argumentComponents[1]
+		value := ""
+
+		// We may need to check the environment for the value.
+		if len(argumentComponents) == 2 {
+			value = argumentComponents[1]
+		} else if environmentValue, ok := environment[variable]; ok {
+			value = environmentValue
+		}
 
 		// Attempt to encrypt the value.
 		cryptedValue, err := s.crypter.EncryptString(value)

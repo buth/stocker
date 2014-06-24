@@ -1,9 +1,8 @@
 package auth
 
 import (
-	"code.google.com/p/go.crypto/ssh"
-	`fmt`
-	`testing`
+	"fmt"
+	"testing"
 )
 
 var ClientTestPrivateKeys = [][]byte{
@@ -165,21 +164,64 @@ Ac/wmI7g5Gn4h1xkK/+XsyqqZFyKeELQRC9TWEHJ5i2GGF9KO4B1DHXC6Eo=
 `),
 }
 
+var ClientTestUnauthorizedKey = []byte(`-----BEGIN RSA PRIVATE KEY-----
+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
+-----END RSA PRIVATE KEY-----
+`)
+
 func TestClient(t *testing.T) {
 
 	server, err := newTestServer()
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	for _, publicKey := range ServerTestPublicKeys {
-		publicKeyParsed, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		server.AddReadKey(publicKeyParsed)
-		server.AddWriteKey(publicKeyParsed)
 	}
 
 	go server.ListenAndServe(`:2022`)
@@ -188,19 +230,19 @@ func TestClient(t *testing.T) {
 		fmt.Println("key")
 
 		// Ensure the reader connection can only read.
-		rclient, err := NewClient("r", `:2022`, privateKey)
+		rclient, err := NewClient(ReaderUser, `:2022`, privateKey)
 		if err != nil {
 			t.Error(err)
 		} else {
-			if _, err := rclient.Run(fmt.Sprintf("export A=%d", i)); err == nil {
+			if _, err := rclient.Run(fmt.Sprintf("export A=%d", i), nil); err == nil {
 				t.Error("write command allowed for reader")
 			}
 
-			if _, err := rclient.Run("unset A"); err == nil {
+			if _, err := rclient.Run("unset A", nil); err == nil {
 				t.Error("write command allowed for reader")
 			}
 
-			if _, err := rclient.Run("env"); err != nil {
+			if _, err := rclient.Run("env", nil); err != nil {
 				t.Error(err)
 			}
 		}
@@ -209,25 +251,25 @@ func TestClient(t *testing.T) {
 		rclient.Close()
 
 		// Ensure the writer connection can read and write.
-		wclient, err := NewClient("w", `:2022`, privateKey)
+		wclient, err := NewClient(WriterUser, `:2022`, privateKey)
 		if err != nil {
 			t.Error(err)
 		} else {
-			if _, err := wclient.Run(fmt.Sprintf("export A=%d", i)); err != nil {
+			if _, err := wclient.Run(fmt.Sprintf("export A=%d", i), nil); err != nil {
 				t.Error("write command allowed for reader")
 			}
 
-			if out, err := wclient.Run("env"); err != nil {
+			if out, err := wclient.Run("env", nil); err != nil {
 				t.Error(err)
 			} else if out != fmt.Sprintf("A=%d\n", i) {
 				t.Error(out)
 			}
 
-			if _, err := wclient.Run("unset A"); err != nil {
+			if _, err := wclient.Run("unset A", nil); err != nil {
 				t.Error("write command allowed for reader")
 			}
 
-			if out, err := wclient.Run("env"); err != nil {
+			if out, err := wclient.Run("env", nil); err != nil {
 				t.Error(err)
 			} else if out != "" {
 				t.Error(out)
@@ -241,5 +283,62 @@ func TestClient(t *testing.T) {
 	if err := server.Stop(); err != nil {
 		t.Fatal(err)
 	}
+}
 
+func TestClientSetEnv(t *testing.T) {
+
+	server, err := newTestServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go server.ListenAndServe(`:2022`)
+
+	client, err := NewClient(WriterUser, `:2022`, ClientTestPrivateKeys[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	env := make(map[string]string)
+
+	env["A"] = "setting"
+
+	if _, err := client.Run("export A", env); err != nil {
+		t.Error("write command allowed for reader")
+	}
+
+	if out, err := client.Run("env", nil); err != nil {
+		t.Error(err)
+	} else if out != "A=setting" {
+		t.Error(out)
+	}
+
+	if _, err := client.Run("unset A", nil); err != nil {
+		t.Error(err)
+	}
+
+	// Close the writer client.
+	client.Close()
+
+	if err := server.Stop(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClientUnauthorized(t *testing.T) {
+
+	server, err := newTestServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	go server.ListenAndServe(`:2022`)
+
+	if _, err := NewClient(WriterUser, `:2022`, ClientTestUnauthorizedKey); err == nil {
+		t.Error("unauthorized client allowed to connect")
+	}
+
+	if err := server.Stop(); err != nil {
+		t.Fatal(err)
+	}
 }

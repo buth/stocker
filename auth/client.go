@@ -65,7 +65,7 @@ func NewClient(user, address string, privateKey []byte) (*client, error) {
 	return c, nil
 }
 
-func (c *client) Run(command string) (string, error) {
+func (c *client) Run(command string, env map[string]string) (string, error) {
 
 	// Create a new session in which to run the command.
 	session, err := c.client.NewSession()
@@ -80,6 +80,14 @@ func (c *client) Run(command string) (string, error) {
 	// the remote side using the Run method.
 	var buf bytes.Buffer
 	session.Stdout = &buf
+
+	// Set the environment.
+	for variable, value := range env {
+		if err := session.Setenv(variable, value); err != nil {
+			return "", err
+		}
+	}
+
 	if err := session.Run(command); err != nil {
 		return "", err
 	}
