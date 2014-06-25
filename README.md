@@ -4,7 +4,7 @@ Stocker provides a method for managing environment variables for a process secur
 
 When run as a server, Stocker accepts SSH connections from Stocker clients for both **writers** and **readers**. Authorized public keys are retrived for both users when the server is started. Values are encrypted and decrypted as requested using a seperate private key stored only on the server; this means that client keys can be rotated, added to, revoked, etc. without the need to re-encrypt data in the key/value store backend.
 
-![Stocker](https://s3.amazonaws.com/newsdev-pub/info/stocker/stocker.svg?v=0.5.0)
+![Stocker](https://s3.amazonaws.com/newsdev-pub/info/stocker/stocker.svg?v=0.5.1)
 
 Stocker is designed to work with any backend, but presently only [Redis](http://redis.io/) has been implemented. All information stored with a given backend is encrypted using [AES-256](http://en.wikipedia.org/wiki/Advanced_Encryption_Standard) in [CBC mode](http://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Cipher-block_chaining_.28CBC.29), signed with a [SHA-512](http://en.wikipedia.org/wiki/SHA-2) [HMAC](http://en.wikipedia.org/wiki/Hash-based_message_authentication_code).
 
