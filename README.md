@@ -67,4 +67,4 @@ The `server` command will run a new Stocker server process in the foreground.
 
 The project is making use of [GitHub issues](https://github.com/blog/831-issues-2-0-the-next-generation) to track progress. If you discover a bug or have a feature request please open a [new issue](https://github.com/buth/stocker/issues/new), regardless of whether or not you intend to contribute code yourself.
 
-For those who want to contribute code, we're using the [git-flow](http://nvie.com/posts/a-successful-git-branching-model/) method, so please submit pull requests as feature branches.
+For those who want to contribute code, we're using the [git-flow](http://nvie.com/posts/a-successful-git-branching-model/) method, so please submit pull requests as feature branches.\n
