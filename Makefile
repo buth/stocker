@@ -1,5 +1,5 @@
 VERSION = $(shell cat VERSION)
-GOPATH = $(shell pwd)/.tmp
+GOPATH = $(shell pwd)/.gopath
 GOBIN = ${GOPATH}/bin
 BUILDS = $(shell pwd)/.builds
 
@@ -14,7 +14,7 @@ ${GOBIN}/stocker: dependencies
 test: dependencies
 	go test -v github.com/buth/stocker/...
 
-release: dependencies ${BUILDS} ${BUILDS}/stocker-${VERSION}
+release: dependencies ${BUILDS}/stocker-${VERSION}
 	gox -output="${BUILDS}/stocker-${VERSION}-{{.OS}}-{{.Arch}}/bin/stocker" -osarch="linux/arm linux/386 linux/amd64 darwin/amd64" github.com/buth/stocker
 
 dependencies: ${GOPATH}/src/github.com/buth/stocker
@@ -25,7 +25,7 @@ ${BUILDS}/stocker-${VERSION}: ${GOPATH}/src/github.com/buth/stocker
 
 ${GOPATH}/src/github.com/buth/stocker: ${GOPATH}
 	mkdir -p ${GOPATH}/src/github.com/buth/stocker
-	rsync -av --exclude /.tmp --exclude .git --exclude-from .gitignore ./ ${GOPATH}/src/github.com/buth/stocker/
+	rsync -av --exclude .git --exclude-from .gitignore ./ ${GOPATH}/src/github.com/buth/stocker/
 
 ${GOBIN}: ${GOPATH}
 	mkdir -p ${GOBIN}
