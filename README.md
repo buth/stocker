@@ -4,7 +4,7 @@ Stocker provides a method for managing environment variables for a process secur
 
 When run as a server, Stocker accepts SSH connections from Stocker clients for both **writers** and **readers**. Authorized public keys are retrived for both users when the server is started. Values are encrypted and decrypted as requested using a seperate private key stored only on the server; this means that client keys can be rotated, added to, revoked, etc. without the need to re-encrypt data in the key/value store backend.
 
-![Stocker](stocker.svg)
+![Stocker](https://s3.amazonaws.com/newsdev-pub/info/stocker/stocker.svg)
 
 Stocker is designed to work with any backend, but presently only [Redis](http://redis.io/) has been implemented. All information stored with a given backend is encrypted using [AES-256](http://en.wikipedia.org/wiki/Advanced_Encryption_Standard) in [CBC mode](http://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Cipher-block_chaining_.28CBC.29), signed with a [SHA-512](http://en.wikipedia.org/wiki/SHA-2) [HMAC](http://en.wikipedia.org/wiki/Hash-based_message_authentication_code).
 
@@ -48,6 +48,6 @@ The `exec` command will fetch and decode all environment variables (`-E`) for a 
 
 ## Contributing
 
-The project is making use of [GitHub issues](https://github.com/blog/831-issues-2-0-the-next-generation) to track progress. If you discover a bug or have a feature request please open a [new issue](https://github.com/buth/stocker/issues), regardless of whether or not you intend to contribute code yourself.
+The project is making use of [GitHub issues](https://github.com/blog/831-issues-2-0-the-next-generation) to track progress. If you discover a bug or have a feature request please open a [new issue](https://github.com/buth/stocker/issues/new), regardless of whether or not you intend to contribute code yourself.
 
 For those who want to contribute code, we're using the [git-flow](http://nvie.com/posts/a-successful-git-branching-model/) method, so please submit pull requests as feature branches.
