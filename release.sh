@@ -2,6 +2,7 @@
 set -e
 
 RELEASE_BRANCH=master
+VERSION=`cat VERSION`
 
 # Build the release binaries.
 make release
@@ -27,5 +28,5 @@ fi
 
 for file in `ls`
 do
-	aws s3 cp $file s3://newsdev-pub/stocker/`cat VERSION`/$file
+	aws s3 cp $file s3://newsdev-pub/stocker/$VERSION/$file
 done
