@@ -45,6 +45,23 @@ stocker exec [options] command [argument...]
 
 The `exec` command will fetch and decode all environment variables (`-E`) for a given group (`-g`) and/or any number of individual environment variables and merge them into the current environment when running the specified command.
 
+### server
+
+```
+stocker server [options]
+  -a=":2022": address to listen on
+  -b="redis": backend to use
+  -h=":6379": backend address
+  -i="/etc/stocker/id_rsa": path to an ssh private key
+  -k="/etc/stocker/key": path to encryption key
+  -n="stocker": backend namespace
+  -r="": retrieve reader public keys from this URL
+  -t="tcp": backend connection protocol
+  -w="": retrieve writer public keys from this URL
+
+```
+
+The `server` command will run a new Stocker server process in the foreground.
 
 ## Contributing
 
