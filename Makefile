@@ -20,7 +20,7 @@ release: dependencies ${BUILDS}/stocker-${VERSION}
 dependencies: ${GOPATH}/src/github.com/buth/stocker
 	go get -v -d github.com/buth/stocker
 
-${BUILDS}/stocker-${VERSION}: ${GOPATH}/src/github.com/buth/stocker
+${BUILDS}/stocker-${VERSION}: ${GOPATH}/src/github.com/buth/stocker ${BUILDS}
 	cp -r ${GOPATH}/src/github.com/buth/stocker ${BUILDS}/stocker-${VERSION}
 
 ${GOPATH}/src/github.com/buth/stocker: ${GOPATH}
