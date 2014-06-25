@@ -42,6 +42,11 @@ func init() {
 
 func execRun(cmd *Command, args []string) {
 
+	// Check the number of args.
+	if len(args) < 1 {
+		cmd.Usage(2)
+	}
+
 	// Find the expanded path to cmd.
 	command, err := exec.LookPath(args[0])
 	if err != nil {
