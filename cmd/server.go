@@ -32,8 +32,8 @@ func init() {
 	Server.Flag.StringVar(&serverConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
 	Server.Flag.StringVar(&serverConfig.PrivateFilepath, "i", "/etc/stocker/id_rsa", "path to an ssh private key")
 	Server.Flag.StringVar(&serverConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
-	Server.Flag.StringVar(&serverConfig.ReadersURL, "r", "https://s3.amazonaws.com/newsdev-ops/keys.json", "retrieve reader public keys from this URL")
-	Server.Flag.StringVar(&serverConfig.WritersURL, "w", "https://s3.amazonaws.com/newsdev-ops/keys.json", "retrieve writer public keys from this URL")
+	Server.Flag.StringVar(&serverConfig.ReadersURL, "r", "", "retrieve reader public keys from this URL")
+	Server.Flag.StringVar(&serverConfig.WritersURL, "w", "", "retrieve writer public keys from this URL")
 
 	serverClient = &http.Client{
 		Transport: &http.Transport{
@@ -111,22 +111,34 @@ func serverRun(cmd *Command, args []string) {
 	// Create a new server using the specified Backend and Crypter.
 	server := auth.NewServer(b, c, private)
 
-	readers, err := serverFetchPublicKeys(serverConfig.ReadersURL)
-	if err != nil {
-		log.Fatal(err)
+	// Check if a URL was provided to pull reader keys from.
+	if serverConfig.ReadersURL != "" {
+
+		// Fetch the reader keys.
+		readers, err := serverFetchPublicKeys(serverConfig.ReadersURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Add the reader keys to the server.
+		for _, reader := range readers {
+			server.AddReadKey(reader)
+		}
 	}
 
-	writers, err := serverFetchPublicKeys(serverConfig.WritersURL)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// Check if a URL was provided to pull writer keys from.
+	if serverConfig.WritersURL != "" {
 
-	for _, reader := range readers {
-		server.AddReadKey(reader)
-	}
+		// Fetch the writer keys.
+		writers, err := serverFetchPublicKeys(serverConfig.WritersURL)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	for _, writer := range writers {
-		server.AddWriteKey(writer)
+		// Add the writer keys to the server.
+		for _, writer := range writers {
+			server.AddWriteKey(writer)
+		}
 	}
 
 	// Start the server.
