@@ -55,8 +55,8 @@ func execRun(cmd *Command, args []string) {
 
 	// Read the private key from disk if a filepath has been provided.
 	var privateKey []byte
-	if setConfig.PrivateFilepath != "" {
-		privateKeyBytes, err := ioutil.ReadFile(setConfig.PrivateFilepath)
+	if execConfig.PrivateFilepath != "" {
+		privateKeyBytes, err := ioutil.ReadFile(execConfig.PrivateFilepath)
 		if err != nil {
 			cmd.Fatal(err.Error())
 		}
@@ -65,7 +65,7 @@ func execRun(cmd *Command, args []string) {
 
 	// Get a new client object. If the private key is nil, the method will
 	// attempt to use ssh-agent.
-	client, err := auth.NewClient(auth.WriterUser, setConfig.Address, privateKey)
+	client, err := auth.NewClient(auth.ReaderUser, execConfig.Address, privateKey)
 	if err != nil {
 		cmd.Fatal(err.Error())
 	}
