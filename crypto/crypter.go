@@ -253,7 +253,7 @@ func (c *crypter) ToFile(filename string) error {
 		return err
 	}
 
-	return nil
+	return encoder.Close()
 }
 
 // CrypterError represents a run-time error in a crypter method.
