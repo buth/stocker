@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"code.google.com/p/go.crypto/ssh"
 	"code.google.com/p/go.crypto/ssh/agent"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -37,6 +38,8 @@ func NewClient(user, address string, privateKey []byte) (*client, error) {
 			ssh.PublicKeys(privateKeyParsed),
 		}
 	} else {
+
+		log.Println("AGENT")
 
 		sshAuthSock := os.Getenv(`SSH_AUTH_SOCK`)
 

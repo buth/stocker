@@ -124,7 +124,7 @@ func (cmd *ServerCommand) Run(args []string) {
 
 		// Add the reader keys to the server.
 		for _, reader := range readers {
-			server.AddReadKey(reader)
+			server.AddRegisterKey(reader)
 		}
 	}
 

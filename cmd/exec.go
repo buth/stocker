@@ -49,9 +49,11 @@ func (cmd *ExecCommand) Run(args []string) {
 		privateKey = privateKeyBytes
 	}
 
+	log.Println("PATH", cmd.PrivateFilepath)
+
 	// Get a new client object. If the private key is nil, the method will
 	// attempt to use ssh-agent.
-	client, err := auth.NewClient(auth.WriterUser, cmd.Address, privateKey)
+	client, err := auth.NewClient(auth.ReaderUser, cmd.Address, privateKey)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
