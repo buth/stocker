@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -8,11 +9,12 @@ var testBackends = []struct {
 	Kind, Namespace, Protocol, Address string
 }{
 	{"redis", "redistest", "tcp", ":6379"},
+	{"etcd", "etcdtest", "tcp", ":4001"},
 }
 
 var testBackendsPairs = map[string]string{
 	"TESTVARIABLE1": "TESTVALUE1",
-	"TESTVARIABLE2": "TESTVALUE3",
+	"TESTVARIABLE2": "TESTVALUE2",
 	"TESTVARIABLE3": "TESTVALUE3",
 }
 
@@ -64,8 +66,11 @@ func TestBackendGetAll(t *testing.T) {
 			t.Error(err)
 		}
 
+		fmt.Println(variables)
+
 		for variable, value := range testBackendsPairs {
 			v, ok := variables[variable]
+			fmt.Println(variables, variable, v, ok)
 			if !ok {
 				t.Errorf("no value returned for %s!", variable)
 			} else if v != value {
