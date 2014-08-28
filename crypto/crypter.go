@@ -28,55 +28,49 @@ const (
 	HmacOutputLength = 64
 )
 
-// A Crypter is an encrypter/decrypter.
-type Crypter interface {
-	EncryptString(plaintext string) (string, error)
-	DecryptString(message string) (string, error)
-}
-
-// A crypter is an encrypter/decrypter set to use a specific encryption key (for
+// A Crypter is an enCrypter/deCrypter set to use a specific encryption key (for
 // AES-256 in CBC mode) and signing key (for HMAC SHA-512) combination.
-type crypter struct {
+type Crypter struct {
 	hmacKey, symetricKey []byte
 	block                cipher.Block
 }
 
-// New creates and returns a new crypter. Keys are obtained by reading from
+// New creates and returns a new Crypter. Keys are obtained by reading from
 // the provided reader.
-func NewCrypter(key io.Reader) (*crypter, error) {
+func NewCrypter(key io.Reader) (*Crypter, error) {
 
-	// Create a new crypter object.
-	crypter := &crypter{}
+	// Create a new Crypter object.
+	Crypter := &Crypter{}
 
 	// Set the hmac key.
-	crypter.hmacKey = make([]byte, HmacKeyLength)
-	if _, err := io.ReadFull(key, crypter.hmacKey); err != nil {
-		return crypter, err
+	Crypter.hmacKey = make([]byte, HmacKeyLength)
+	if _, err := io.ReadFull(key, Crypter.hmacKey); err != nil {
+		return Crypter, err
 	}
 
 	// Set the symetric key.
-	crypter.symetricKey = make([]byte, SymetricKeyLength)
-	if _, err := io.ReadFull(key, crypter.symetricKey); err != nil {
-		return crypter, err
+	Crypter.symetricKey = make([]byte, SymetricKeyLength)
+	if _, err := io.ReadFull(key, Crypter.symetricKey); err != nil {
+		return Crypter, err
 	}
 
 	// Try to create a cipher from the symetric key.
-	block, err := aes.NewCipher(crypter.symetricKey)
+	block, err := aes.NewCipher(Crypter.symetricKey)
 	if err != nil {
-		return crypter, err
+		return Crypter, err
 	}
 
 	// Set the block.
-	crypter.block = block
+	Crypter.block = block
 
-	return crypter, nil
+	return Crypter, nil
 }
 
-func NewRandomCrypter() (*crypter, error) {
+func NewRandomCrypter() (*Crypter, error) {
 	return NewCrypter(rand.Reader)
 }
 
-func NewCrypterFromFile(filepath string) (*crypter, error) {
+func NewCrypterFromFile(filepath string) (*Crypter, error) {
 
 	// Check the status of the secret file.
 	stat, err := os.Stat(filepath)
@@ -106,7 +100,7 @@ func NewCrypterFromFile(filepath string) (*crypter, error) {
 }
 
 // hmac computes and returns SHA-512 Hmac sum using the signing key.
-func (c *crypter) hmac(message []byte) []byte {
+func (c *Crypter) hmac(message []byte) []byte {
 	signer := hmac.New(sha512.New, c.hmacKey)
 	signer.Write(message)
 	return signer.Sum(nil)
@@ -114,7 +108,7 @@ func (c *crypter) hmac(message []byte) []byte {
 
 // encrypt encrypts a slice of bytes using the AES-256 cipher in CBC mode and
 // returns an usigned sice of cipher bytes that begins with the IV.
-func (c *crypter) encrypt(plainbytes []byte) ([]byte, error) {
+func (c *Crypter) encrypt(plainbytes []byte) ([]byte, error) {
 
 	// Initialize size with room for the IV.
 	size := aes.BlockSize + len(plainbytes)
@@ -134,7 +128,7 @@ func (c *crypter) encrypt(plainbytes []byte) ([]byte, error) {
 		return []byte{}, err
 	}
 
-	// Create the encrypter and crypt the plainbytes in place.
+	// Create the enCrypter and crypt the plainbytes in place.
 	mode := cipher.NewCBCEncrypter(c.block, iv)
 	mode.CryptBlocks(cipherbytes[aes.BlockSize:], cipherbytes[aes.BlockSize:])
 
@@ -145,7 +139,7 @@ func (c *crypter) encrypt(plainbytes []byte) ([]byte, error) {
 // mode and returns a slice of plain bytes. The first Block of the cipherbytes
 // argument is expected to be the IV. It does not verify or expect a signature
 // to be present in the cipherbytes argument.
-func (c *crypter) decrypt(cipherbytes []byte) ([]byte, error) {
+func (c *Crypter) decrypt(cipherbytes []byte) ([]byte, error) {
 
 	// We need an IV and at least one Block of cipherbytes to proceed.
 	if len(cipherbytes) < aes.BlockSize*2 {
@@ -174,7 +168,7 @@ func (c *crypter) decrypt(cipherbytes []byte) ([]byte, error) {
 // EncryptString converts plaintext to signed, base 64 encoded ciphertext by
 // encrypting the plaintext using AES-256 and prepending a Hmac SHA-512
 // signature.
-func (c *crypter) EncryptString(plaintext string) (string, error) {
+func (c *Crypter) EncryptString(plaintext string) (string, error) {
 
 	// Convert the string to a slice of bytes.
 	plainbytes := []byte(plaintext)
@@ -200,7 +194,7 @@ func (c *crypter) EncryptString(plaintext string) (string, error) {
 // DecryptString converts signed, base 64 encoded ciphertext to plaintext by
 // first validating a prepended Hmac SHA-512 signature and then decrypting the
 // remaining message using AES-256.
-func (c *crypter) DecryptString(message string) (string, error) {
+func (c *Crypter) DecryptString(message string) (string, error) {
 
 	// Decode the base 64 string.
 	messagebytes, err := base64.StdEncoding.DecodeString(message)
@@ -224,8 +218,25 @@ func (c *crypter) DecryptString(message string) (string, error) {
 	return plaintext, nil
 }
 
-// ToFile saves the crypter's keys to disk, encoded as a base 64 string.
-func (c *crypter) ToFile(filename string) error {
+// writeBase64 encodes the raw key as a base64-encoded string.
+func (c *Crypter) writeBase64(w io.Writer) error {
+
+	// Create a new encoder.
+	encoder := base64.NewEncoder(base64.StdEncoding, w)
+
+	if _, err := encoder.Write(c.hmacKey); err != nil {
+		return err
+	}
+
+	if _, err := encoder.Write(c.symetricKey); err != nil {
+		return err
+	}
+
+	return encoder.Close()
+}
+
+// ToFile saves the Crypter's keys to disk, encoded as a base 64 string.
+func (c *Crypter) ToFile(filename string) error {
 
 	// Create a new file. This will wipe out any existing file (if we can
 	// write to it) and set permissions to 666.
@@ -242,21 +253,20 @@ func (c *crypter) ToFile(filename string) error {
 	// Defer the closing of the file, ignoring any error.
 	defer out.Close()
 
-	// Create a new encoder.
-	encoder := base64.NewEncoder(base64.StdEncoding, out)
-
-	if _, err := encoder.Write(c.hmacKey); err != nil {
-		return err
-	}
-
-	if _, err := encoder.Write(c.symetricKey); err != nil {
-		return err
-	}
-
-	return encoder.Close()
+	// Return the encoded string.
+	return c.writeBase64(out)
 }
 
-// CrypterError represents a run-time error in a crypter method.
+// ToFile saves the Crypter's keys to disk, encoded as a base 64 string.
+func (c *Crypter) ToString() (string, error) {
+	out := bytes.NewBuffer([]byte{})
+	if err := c.writeBase64(out); err != nil {
+		return "", err
+	}
+	return out.String(), nil
+}
+
+// CrypterError represents a run-time error in a Crypter method.
 type CrypterError struct {
 	Err string
 }

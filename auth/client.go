@@ -6,6 +6,7 @@ import (
 	"code.google.com/p/go.crypto/ssh/agent"
 	"net"
 	"os"
+	"strings"
 )
 
 type Client interface {
@@ -94,6 +95,34 @@ func (c *client) Run(command string, env map[string]string) (string, error) {
 
 	// Return the buffer as a string.
 	return buf.String(), nil
+}
+
+func (c *client) Env(group string) (map[string]string, error) {
+
+	// Create an environment specific to this variable.
+	runEnv := map[string]string{
+		"GROUP": group,
+	}
+
+	// Run the env command with the specified environment.
+	stockerEnv, err := c.Run("env", runEnv)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a map of environment variables to be returned.
+	env := make(map[string]string)
+
+	// Parse the stocker environment and save it into the env.
+	pairs := strings.Split(stockerEnv, "\n")
+	for _, pair := range pairs {
+		components := strings.SplitN(pair, "=", 2)
+		if len(components) == 2 {
+			env[components[0]] = components[1]
+		}
+	}
+
+	return env, nil
 }
 
 func (c *client) Close() error {

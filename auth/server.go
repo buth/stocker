@@ -30,7 +30,7 @@ type Server interface {
 
 type server struct {
 	backend backend.Backend
-	crypter crypto.Crypter
+	crypter *crypto.Crypter
 
 	// SSH
 	serverConfig *ssh.ServerConfig
@@ -42,7 +42,7 @@ type server struct {
 	writeKeysMu, readKeysMu sync.RWMutex
 }
 
-func NewServer(b backend.Backend, c crypto.Crypter, hostKey ssh.Signer) *server {
+func NewServer(b backend.Backend, c *crypto.Crypter, hostKey ssh.Signer) *server {
 
 	// Initialize a new server object with the backend and crypter.
 	s := &server{
