@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"flag"
 	"fmt"
 	"github.com/buth/stocker/auth"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"os/user"
@@ -12,72 +14,56 @@ import (
 	"syscall"
 )
 
-var Exec = &Command{
-	UsageLine: "exec [options] command [argument...]",
-	Short:     "execute a command with the given environment",
-}
-
-type StringAcumulator []string
-
-func (s *StringAcumulator) Set(value string) error {
-	*s = append(*s, value)
-	return nil
-}
-
-func (s *StringAcumulator) String() string {
-	return fmt.Sprintf("%s", *s)
-}
-
-var execConfig struct {
+type ExecCommand struct {
 	Address, PrivateFilepath, Group, User string
 }
 
-func init() {
-	Exec.Run = execRun
-	Exec.Flag.StringVar(&execConfig.Address, "a", ":2022", "address of the stocker server")
-	Exec.Flag.StringVar(&execConfig.Group, "g", "", "group to use for storing and retrieving data")
-	Exec.Flag.StringVar(&execConfig.PrivateFilepath, "i", "", "path to an SSH private key")
-	Exec.Flag.StringVar(&execConfig.User, "u", "", "user to execute the command as")
+func (cmd *ExecCommand) Flags(fs *flag.FlagSet) *flag.FlagSet {
+	fs.StringVar(&cmd.Address, "a", ":2022", "address of the stocker server")
+	fs.StringVar(&cmd.Group, "g", "default", "group to use for storing and retrieving data")
+	fs.StringVar(&cmd.PrivateFilepath, "i", "", "path to an SSH private key")
+	fs.StringVar(&cmd.User, "u", "", "user to execute the command as")
+	return fs
 }
 
-func execRun(cmd *Command, args []string) {
+func (cmd *ExecCommand) Run(args []string) {
 
 	// Check the number of args.
 	if len(args) < 1 {
-		cmd.Usage(2)
+		log.Fatal("no command specified")
 	}
 
 	// Find the expanded path to cmd.
 	command, err := exec.LookPath(args[0])
 	if err != nil {
-		cmd.Fatal(fmt.Sprintf("%s: command not found", args[0]))
+		log.Fatal(fmt.Sprintf("%s: command not found", args[0]))
 	}
 
 	// Read the private key from disk if a filepath has been provided.
 	var privateKey []byte
-	if execConfig.PrivateFilepath != "" {
-		privateKeyBytes, err := ioutil.ReadFile(execConfig.PrivateFilepath)
+	if cmd.PrivateFilepath != "" {
+		privateKeyBytes, err := ioutil.ReadFile(cmd.PrivateFilepath)
 		if err != nil {
-			cmd.Fatal(err.Error())
+			log.Fatal(err.Error())
 		}
 		privateKey = privateKeyBytes
 	}
 
 	// Get a new client object. If the private key is nil, the method will
 	// attempt to use ssh-agent.
-	client, err := auth.NewClient(auth.ReaderUser, execConfig.Address, privateKey)
+	client, err := auth.NewClient(auth.WriterUser, cmd.Address, privateKey)
 	if err != nil {
-		cmd.Fatal(err.Error())
+		log.Fatal(err.Error())
 	}
 
 	// Create an environment specific to this variable.
 	runEnv := map[string]string{
-		"GROUP": execConfig.Group,
+		"GROUP": cmd.Group,
 	}
 
 	stockerEnv, err := client.Run("env", runEnv)
 	if err != nil {
-		cmd.Fatal(err.Error())
+		log.Fatal(err.Error())
 	}
 
 	// Create a map of environment variables to be passed to cmd and
@@ -106,20 +92,20 @@ func execRun(cmd *Command, args []string) {
 	}
 
 	// Handle user.
-	if execConfig.User != "" {
+	if cmd.User != "" {
 
-		u, err := user.Lookup(execConfig.User)
+		u, err := user.Lookup(cmd.User)
 		if err != nil {
-			cmd.Fatal(err.Error())
+			log.Fatal(err.Error())
 		}
 
 		uid, err := strconv.Atoi(u.Uid)
 		if err != nil {
-			cmd.Fatal(err.Error())
+			log.Fatal(err.Error())
 		}
 
 		if err := syscall.Setuid(uid); err != nil {
-			cmd.Fatal(err.Error())
+			log.Fatal(err.Error())
 		}
 	}
 

@@ -3,6 +3,7 @@ package cmd
 import (
 	"code.google.com/p/go.crypto/ssh"
 	"encoding/json"
+	"flag"
 	"github.com/buth/stocker/auth"
 	"github.com/buth/stocker/backend"
 	"github.com/buth/stocker/crypto"
@@ -12,29 +13,26 @@ import (
 	"time"
 )
 
-var serverConfig struct {
+var serverClient *http.Client
+
+type ServerCommand struct {
 	SecretFilepath, PrivateFilepath, Backend, BackendNamespace, BackendProtocol, BackendAddress, Group, Address, ReadersURL, WritersURL string
 }
 
-var serverClient *http.Client
-
-var Server = &Command{
-	UsageLine: "server [options]",
-	Short:     "start a stocker server",
+func (cmd *ServerCommand) Flags(fs *flag.FlagSet) *flag.FlagSet {
+	fs.StringVar(&cmd.Address, "p", ":2022", "address to listen on")
+	fs.StringVar(&cmd.Backend, "-backend", "etcd", "backend to use")
+	fs.StringVar(&cmd.BackendAddress, "-backend-address", ":4001", "backend address")
+	fs.StringVar(&cmd.BackendNamespace, "-backend-namespace", "stocker", "backend namespace")
+	fs.StringVar(&cmd.BackendProtocol, "-backend-protocol", "tcp", "backend connection protocol")
+	fs.StringVar(&cmd.PrivateFilepath, "i", "/etc/stocker/id_rsa", "path to an ssh private (host) key")
+	fs.StringVar(&cmd.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
+	fs.StringVar(&cmd.ReadersURL, "r", "", "reader public keys URL")
+	fs.StringVar(&cmd.WritersURL, "w", "", "writer public keys URL")
+	return fs
 }
 
 func init() {
-	Server.Run = serverRun
-	Server.Flag.StringVar(&serverConfig.Address, "a", ":2022", "address to listen on")
-	Server.Flag.StringVar(&serverConfig.Backend, "b", "redis", "backend to use")
-	Server.Flag.StringVar(&serverConfig.BackendAddress, "h", ":6379", "backend address")
-	Server.Flag.StringVar(&serverConfig.BackendNamespace, "n", "stocker", "backend namespace")
-	Server.Flag.StringVar(&serverConfig.BackendProtocol, "t", "tcp", "backend connection protocol")
-	Server.Flag.StringVar(&serverConfig.PrivateFilepath, "i", "/etc/stocker/id_rsa", "path to an ssh private key")
-	Server.Flag.StringVar(&serverConfig.SecretFilepath, "k", "/etc/stocker/key", "path to encryption key")
-	Server.Flag.StringVar(&serverConfig.ReadersURL, "r", "", "retrieve reader public keys from this URL")
-	Server.Flag.StringVar(&serverConfig.WritersURL, "w", "", "retrieve writer public keys from this URL")
-
 	serverClient = &http.Client{
 		Transport: &http.Transport{
 			MaxIdleConnsPerHost:   1,
@@ -86,23 +84,27 @@ func serverFetchPublicKeys(url string) ([]ssh.PublicKey, error) {
 	return publicKeys, nil
 }
 
-func serverRun(cmd *Command, args []string) {
+func (cmd *ServerCommand) Run(args []string) {
 
-	c, err := crypto.NewCrypterFromFile(serverConfig.SecretFilepath)
+	// Pull a new crypter from the path to the key.
+	c, err := crypto.NewCrypterFromFile(cmd.SecretFilepath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	b, err := backend.NewBackend(serverConfig.Backend, serverConfig.BackendNamespace, serverConfig.BackendProtocol, serverConfig.BackendAddress)
+	// Create a new backend of the specified type.
+	b, err := backend.NewBackend(cmd.Backend, cmd.BackendNamespace, cmd.BackendProtocol, cmd.BackendAddress)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	privateBytes, err := ioutil.ReadFile(serverConfig.PrivateFilepath)
+	// Read the private host key from the given path.
+	privateBytes, err := ioutil.ReadFile(cmd.PrivateFilepath)
 	if err != nil {
 		log.Fatal("failed to load private key")
 	}
 
+	// Attempt to parse the key.
 	private, err := ssh.ParsePrivateKey(privateBytes)
 	if err != nil {
 		log.Fatal("failed to parse private key")
@@ -112,10 +114,10 @@ func serverRun(cmd *Command, args []string) {
 	server := auth.NewServer(b, c, private)
 
 	// Check if a URL was provided to pull reader keys from.
-	if serverConfig.ReadersURL != "" {
+	if cmd.ReadersURL != "" {
 
 		// Fetch the reader keys.
-		readers, err := serverFetchPublicKeys(serverConfig.ReadersURL)
+		readers, err := serverFetchPublicKeys(cmd.ReadersURL)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -127,10 +129,10 @@ func serverRun(cmd *Command, args []string) {
 	}
 
 	// Check if a URL was provided to pull writer keys from.
-	if serverConfig.WritersURL != "" {
+	if cmd.WritersURL != "" {
 
 		// Fetch the writer keys.
-		writers, err := serverFetchPublicKeys(serverConfig.WritersURL)
+		writers, err := serverFetchPublicKeys(cmd.WritersURL)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -142,5 +144,5 @@ func serverRun(cmd *Command, args []string) {
 	}
 
 	// Start the server.
-	log.Fatal(server.ListenAndServe(serverConfig.Address))
+	log.Fatal(server.ListenAndServe(cmd.Address))
 }

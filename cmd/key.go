@@ -1,28 +1,23 @@
 package cmd
 
 import (
+	"flag"
+	"fmt"
 	"github.com/buth/stocker/crypto"
 	"log"
 )
 
-var Key = &Command{
-	UsageLine: "key filename",
-	Short:     "create a key saved at the given filename",
+type KeyCommand struct {
+	filename string
 }
 
-func init() {
-	Key.Run = keyRun
+// Flags defines the command-specific flags.
+func (cmd *KeyCommand) Flags(fs *flag.FlagSet) *flag.FlagSet {
+	fs.StringVar(&cmd.filename, "f", "", "filename to save the key to")
+	return fs
 }
 
-func keyRun(cmd *Command, args []string) {
-
-	// Check the number of args.
-	if len(args) != 1 {
-		cmd.Usage(2)
-	}
-
-	// Set the filename.
-	filename := args[0]
+func (cmd *KeyCommand) Run(args []string) {
 
 	// Create a random crypter object.
 	c, err := crypto.NewRandomCrypter()
@@ -30,8 +25,21 @@ func keyRun(cmd *Command, args []string) {
 		log.Fatal(err)
 	}
 
-	// Write out the key to the given filename.
-	if err := c.ToFile(filename); err != nil {
-		log.Fatal(err)
+	if cmd.filename != "" {
+
+		// Write out the key to the given filename.
+		if err := c.ToFile(cmd.filename); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+
+		// Just get the string.
+		keyString, err := c.ToString()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Print the string to STDOUT.
+		fmt.Print(keyString)
 	}
 }
