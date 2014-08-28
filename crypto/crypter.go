@@ -202,6 +202,11 @@ func (c *Crypter) DecryptString(message string) (string, error) {
 		return "", err
 	}
 
+	// Check that message bytes is long enough.
+	if len(messagebytes) < 64 {
+		return "", CrypterError{"message signature is too short"}
+	}
+
 	// Check the signature.
 	if hmac.Equal(messagebytes[:64], c.hmac(messagebytes[64:])) != true {
 		return "", CrypterError{"invalid signature"}
