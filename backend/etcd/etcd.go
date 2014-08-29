@@ -1,6 +1,7 @@
 package etcd
 
 import (
+	"encoding/base64"
 	"fmt"
 	"github.com/coreos/go-etcd/etcd"
 	"strings"
@@ -42,16 +43,18 @@ func (e *EtcdBackend) keyVariable(group, variable string) string {
 	return key(e.namespace, group, variable)
 }
 
-func (e *EtcdBackend) GetVariable(group, variable string) (string, error) {
+func (e *EtcdBackend) GetVariable(group, variable string) ([]byte, error) {
 	response, err := e.client.Get(e.keyVariable(group, variable), false, false)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return response.Node.Value, nil
+
+	return base64.StdEncoding.DecodeString(response.Node.Value)
 }
 
-func (e *EtcdBackend) SetVariable(group, variable, value string) error {
-	_, err := e.client.Set(e.keyVariable(group, variable), value, 0)
+func (e *EtcdBackend) SetVariable(group, variable string, value []byte) error {
+	encodedValue := base64.StdEncoding.EncodeToString(value)
+	_, err := e.client.Set(e.keyVariable(group, variable), encodedValue, 0)
 	return err
 }
 
@@ -60,7 +63,7 @@ func (e *EtcdBackend) RemoveVariable(group, variable string) error {
 	return err
 }
 
-func (e *EtcdBackend) GetGroup(group string) (map[string]string, error) {
+func (e *EtcdBackend) GetGroup(group string) (map[string][]byte, error) {
 	key := e.keyGroup(group)
 	response, err := e.client.Get(key, false, true)
 	if err != nil {
@@ -68,9 +71,13 @@ func (e *EtcdBackend) GetGroup(group string) (map[string]string, error) {
 	}
 
 	prefix := fmt.Sprintf("/%s/", key)
-	groupMap := make(map[string]string)
+	groupMap := make(map[string][]byte)
 	for _, node := range response.Node.Nodes {
-		groupMap[strings.TrimPrefix(node.Key, prefix)] = node.Value
+		value, err := base64.StdEncoding.DecodeString(node.Value)
+		if err != nil {
+			return nil, err
+		}
+		groupMap[strings.TrimPrefix(node.Key, prefix)] = value
 	}
 
 	return groupMap, nil

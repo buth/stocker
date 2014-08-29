@@ -7,10 +7,10 @@ import (
 )
 
 type Backend interface {
-	GetVariable(group, variable string) (string, error)
-	SetVariable(group, variable, value string) error
+	GetVariable(group, variable string) ([]byte, error)
+	SetVariable(group, variable string, value []byte) error
 	RemoveVariable(group, variable string) error
-	GetGroup(group string) (map[string]string, error)
+	GetGroup(group string) (map[string][]byte, error)
 	RemoveGroup(group string) error
 }
 

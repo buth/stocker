@@ -2,6 +2,7 @@ package redis
 
 import (
 	"bytes"
+	"errors"
 	"github.com/garyburd/redigo/redis"
 	"log"
 )
@@ -44,17 +45,17 @@ func (r *redisBackend) Key(group string) []byte {
 	return buf.Bytes()
 }
 
-func (r *redisBackend) GetVariable(group, variable string) (string, error) {
+func (r *redisBackend) GetVariable(group, variable string) ([]byte, error) {
 
 	// Get a connection from the pool and defer its closing.
 	conn := r.pool.Get()
 	defer conn.Close()
 
 	// Return the results of the GET command.
-	return redis.String(conn.Do("HGET", r.Key(group), variable))
+	return redis.Bytes(conn.Do("HGET", r.Key(group), variable))
 }
 
-func (r *redisBackend) SetVariable(group, variable, value string) error {
+func (r *redisBackend) SetVariable(group, variable string, value []byte) error {
 
 	// Get a connection from the pool and defer its closing.
 	conn := r.pool.Get()
@@ -76,24 +77,34 @@ func (r *redisBackend) RemoveVariable(group, variable string) error {
 	return err
 }
 
-func (r *redisBackend) GetGroup(group string) (map[string]string, error) {
+func (r *redisBackend) GetGroup(group string) (map[string][]byte, error) {
 
 	// Create an empty map.
-	variables := make(map[string]string)
+	variables := make(map[string][]byte)
 
 	// Get a connection from the pool and defer its closing.
 	conn := r.pool.Get()
 	defer conn.Close()
 
 	// Get the values as a flat string.
-	values, err := redis.Strings(conn.Do("HGETALL", r.Key(group)))
+	values, err := redis.Values(conn.Do("HGETALL", r.Key(group)))
 	if err != nil {
 		return variables, err
 	}
 
 	// Write the values into the variables map.
 	for i := 0; i < len(values)-1; i += 2 {
-		variables[values[i]] = values[i+1]
+		key, ok := values[i].([]byte)
+		if !ok {
+			return nil, errors.New("redis: could not convert value to byte slice")
+		}
+
+		value, ok := values[i+1].([]byte)
+		if !ok {
+			return nil, errors.New("redis: could not convert value to byte slice")
+		}
+
+		variables[string(key)] = value
 	}
 
 	// Return the map with no error.

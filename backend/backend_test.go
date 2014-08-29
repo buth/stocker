@@ -1,7 +1,7 @@
 package backend
 
 import (
-	"fmt"
+	"bytes"
 	"testing"
 )
 
@@ -12,13 +12,16 @@ var testBackends = []struct {
 	{"etcd", "etcdtest", "tcp", ":4001"},
 }
 
-var testBackendsPairs = map[string]string{
-	"TESTVARIABLE1": "TESTVALUE1",
-	"TESTVARIABLE2": "TESTVALUE2",
-	"TESTVARIABLE3": "TESTVALUE3",
+func backendPairs() map[string][]byte {
+	testBackendsPairs := make(map[string][]byte)
+	testBackendsPairs["TESTVARIABLE1"] = []byte("test value #1")
+	testBackendsPairs["TESTVARIABLE2"] = []byte("test value #2")
+	testBackendsPairs["TESTVARIABLE3"] = []byte("test value #3")
+	return testBackendsPairs
 }
 
 func TestBackend(t *testing.T) {
+	testBackendsPairs := backendPairs()
 	for _, b := range testBackends {
 
 		backend, err := NewBackend(b.Kind, b.Namespace, b.Protocol, b.Address)
@@ -27,8 +30,9 @@ func TestBackend(t *testing.T) {
 		}
 
 		for variable, value := range testBackendsPairs {
+
 			if err := backend.SetVariable("testgroup", variable, value); err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 		}
 
@@ -36,7 +40,7 @@ func TestBackend(t *testing.T) {
 			v, err := backend.GetVariable("testgroup", variable)
 			if err != nil {
 				t.Error(err)
-			} else if v != value {
+			} else if !bytes.Equal(v, value) {
 				t.Errorf("expected value %s for %s but found %s!", value, variable, v)
 			}
 		}
@@ -48,6 +52,7 @@ func TestBackend(t *testing.T) {
 }
 
 func TestBackendGetAll(t *testing.T) {
+	testBackendsPairs := backendPairs()
 	for _, b := range testBackends {
 
 		backend, err := NewBackend(b.Kind, b.Namespace, b.Protocol, b.Address)
@@ -57,24 +62,21 @@ func TestBackendGetAll(t *testing.T) {
 
 		for variable, value := range testBackendsPairs {
 			if err := backend.SetVariable("testgroup", variable, value); err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 		}
 
 		variables, err := backend.GetGroup("testgroup")
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
-
-		fmt.Println(variables)
 
 		for variable, value := range testBackendsPairs {
 			v, ok := variables[variable]
-			fmt.Println(variables, variable, v, ok)
 			if !ok {
 				t.Errorf("no value returned for %s!", variable)
-			} else if v != value {
-				t.Errorf("expected value %s for %s but found %s!", value, variable, v)
+			} else if !bytes.Equal(v, value) {
+				t.Errorf("expected value \"%s\" for %s but found \"%s\"!", value, variable, v)
 			}
 		}
 
