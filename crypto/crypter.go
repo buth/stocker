@@ -165,6 +165,8 @@ func (c *Crypter) decrypt(cipherbytes []byte) ([]byte, error) {
 	return plainbytes, nil
 }
 
+// Encrypt converts plainbytes to signed cipherbytes by encrypting the
+// plainbytes using AES-256 and prepending a Hmac SHA-512 signature.
 func (c *Crypter) Encrypt(plainbytes []byte) ([]byte, error) {
 
 	// Encrypt the slice of plainbytes, producing cipherbytes.
@@ -199,6 +201,9 @@ func (c *Crypter) EncryptString(plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(messagebytes), nil
 }
 
+// Decrypt converts signed slice of cipherbytes to plainbytes by first
+// validating a prepended Hmac SHA-512 signature and then decrypting the
+// remaining message using AES-256.
 func (c *Crypter) Decrypt(messagebytes []byte) ([]byte, error) {
 
 	// Check that message bytes is long enough.
