@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/pem"
 	"errors"
@@ -26,17 +25,11 @@ const (
 	ReaderUser    = `r`
 	RegisterUser  = `x`
 	SSHGroupName  = `_ssh`
+	ReadKeysKey   = `readers`
 	ReaderKeySize = 4096
 )
 
-type Server interface {
-	AddRegisterKey(key ssh.PublicKey)
-	AddWriteKey(key ssh.PublicKey)
-	ListenAndServe(address string) error
-	Stop() error
-}
-
-type server struct {
+type Server struct {
 	backend backend.Backend
 	crypter *crypto.Crypter
 
@@ -48,12 +41,16 @@ type server struct {
 	// Keys.
 	writeKeys, registerKeys     *list.List
 	writeKeysMu, registerKeysMu sync.RWMutex
+
+	// Reade keys.
+	readKeys   map[string][]byte
+	readKeysMu sync.RWMutex
 }
 
-func NewServer(b backend.Backend, c *crypto.Crypter, hostKey ssh.Signer) *server {
+func NewServer(b backend.Backend, c *crypto.Crypter, hostKey ssh.Signer) (*Server, error) {
 
 	// Initialize a new server object with the backend and crypter.
-	s := &server{
+	s := &Server{
 		backend: b,
 		crypter: c,
 	}
@@ -65,9 +62,19 @@ func NewServer(b backend.Backend, c *crypto.Crypter, hostKey ssh.Signer) *server
 	s.writeKeys = list.New()
 	s.registerKeys = list.New()
 
+	// Get the read key map from the store.
+	readKeyEncrypted, err := s.backend.GetVariable(SSHGroupName, ReadKeysKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal the read key.
+	if err := s.crypter.Unmarshal(readKeyEncrypted, &s.readKeys); err != nil {
+		return nil, err
+	}
+
 	// Build a new certificate checker.
 	certChecker := &ssh.CertChecker{
-
 		IsAuthority:     NotAnAuthority,
 		UserKeyFallback: s.checkUserKey,
 	}
@@ -85,50 +92,31 @@ func NewServer(b backend.Backend, c *crypto.Crypter, hostKey ssh.Signer) *server
 	// Add the signing private key.
 	s.serverConfig.AddHostKey(hostKey)
 
-	return s
+	return s, nil
+}
+
+func matchKey(key ssh.PublicKey, keys *list.List) bool {
+	marshalled := key.Marshal()
+	for e := keys.Front(); e != nil; e = e.Next() {
+		if bytes.Equal(marshalled, e.Value.([]byte)) {
+			return true
+		}
+	}
+	return false
 }
 
 // AddWriteKey adds a public key that is authorized to connect to the server
 // and perform both read and write operations. If the has already been added
 // to the server, this function will update its status.
-func (s *server) AddWriteKey(key ssh.PublicKey) {
-
-	// Get the write keys lock for writing.
+func (s *Server) AddWriteKey(key ssh.PublicKey) {
 	s.writeKeysMu.Lock()
-	defer s.writeKeysMu.Unlock()
-
-	// Serialze the key and convert it to an string (which is immutable).
-	serialized := string(key.Marshal())
-
-	// Add the key string to the write keys list.
-	s.writeKeys.PushBack(serialized)
+	s.writeKeys.PushBack(key.Marshal())
+	s.writeKeysMu.Unlock()
 }
 
-func matchKey(key ssh.PublicKey, keys *list.List) bool {
-
-	// Serialze the key and convert it to an string.
-	serialized := SerializeKey(key)
-
-	// Add the key string to the write keys list.
-	for e := keys.Front(); e != nil; e = e.Next() {
-		log.Println("x", serialized)
-		log.Println("s", e.Value.(string))
-
-		if serialized == e.Value.(string) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (s *server) matchWriteKey(key ssh.PublicKey) bool {
-
-	// Get the write keys lock for reading.
+func (s *Server) matchWriteKey(key ssh.PublicKey) bool {
 	s.writeKeysMu.RLock()
 	defer s.writeKeysMu.RUnlock()
-
-	// Return the result of the generic match key function.
 	return matchKey(key, s.writeKeys)
 }
 
@@ -136,32 +124,21 @@ func (s *server) matchWriteKey(key ssh.PublicKey) bool {
 // and perform only read operations. If the has already been added to the
 // server, this function will update its status.
 // to the server, this function will update its status.
-func (s *server) AddRegisterKey(key ssh.PublicKey) {
-
-	// Get the read keys lock for writing.
+func (s *Server) AddRegisterKey(key ssh.PublicKey) {
 	s.registerKeysMu.Lock()
-	defer s.registerKeysMu.Unlock()
-
-	// Serialze the key and convert it to an string (which is immutable).
-	serialized := SerializeKey(key)
-
-	// Add the key string to the read keys list.
-	s.registerKeys.PushBack(serialized)
+	s.registerKeys.PushBack(key.Marshal())
+	s.registerKeysMu.Unlock()
 }
 
-func (s *server) matchRegisterKey(key ssh.PublicKey) bool {
-
-	// Get the read keys lock for reading.
+func (s *Server) matchRegisterKey(key ssh.PublicKey) bool {
 	s.registerKeysMu.RLock()
 	defer s.registerKeysMu.RUnlock()
-
-	// Return the result of the generic match key function.
 	return matchKey(key, s.registerKeys)
 }
 
 // checkUserKey determines whether or not the given public key is present for
 // the user indicated in the SSH connection meta-data.
-func (s *server) checkUserKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+func (s *Server) checkUserKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 
 	// Check for writers.
 	switch conn.User() {
@@ -172,7 +149,6 @@ func (s *server) checkUserKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Pe
 		}
 
 	case RegisterUser:
-		log.Println("register user")
 		if s.matchRegisterKey(key) {
 			return &ssh.Permissions{}, nil
 		}
@@ -185,20 +161,13 @@ func (s *server) checkUserKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Pe
 			return nil, err
 		}
 
-		// Get the base64-encoded SSH public key from the backend.
-		storedKeyEncoded, err := s.backend.GetVariable(SSHGroupName, host)
-		if err != nil {
-			return nil, err
-		}
+		// Get the lock.
+		s.readKeysMu.RLock()
+		defer s.readKeysMu.RUnlock()
 
-		// Decode the base64-encoded string.
-		storedKeyBytes, err := base64.StdEncoding.DecodeString(storedKeyEncoded)
-		if err != nil {
-			return nil, err
-		}
-
-		// Compare bytes with the incomming SSH key.
-		if bytes.Equal(storedKeyBytes, key.Marshal()) {
+		// Get the read key for this host, and try to match it.
+		readKey, ok := s.readKeys[host]
+		if ok && bytes.Equal(readKey, key.Marshal()) {
 			return &ssh.Permissions{}, nil
 		}
 	}
@@ -207,7 +176,7 @@ func (s *server) checkUserKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Pe
 	return nil, errors.New("unauthorized")
 }
 
-func (s *server) exec(stdout io.Writer, canWrite bool, raddr string, environment map[string]string, commandString string) error {
+func (s *Server) exec(stdout io.Writer, canWrite bool, raddr string, environment map[string]string, commandString string) error {
 
 	// Try to pull the group from the environment.
 	var group string
@@ -243,10 +212,22 @@ func (s *server) exec(stdout io.Writer, canWrite bool, raddr string, environment
 			return err
 		}
 
-		pubKeyBase64 := base64.StdEncoding.EncodeToString(pubKey.Marshal())
+		s.readKeysMu.Lock()
 
-		// Set
-		s.backend.SetVariable(SSHGroupName, host, pubKeyBase64)
+		s.readKeys[host] = pubKey.Marshal()
+
+		readKeysEncrypted, err := s.crypter.Marshal(s.readKeys)
+		if err != nil {
+			s.readKeysMu.Unlock()
+			return err
+		}
+
+		if err := s.backend.SetVariable(SSHGroupName, ReadKeysKey, readKeysEncrypted); err != nil {
+			s.readKeysMu.Unlock()
+			return err
+		}
+
+		s.readKeysMu.Unlock()
 
 		privKeyPem := &pem.Block{
 			Type:  "RSA PRIVATE KEY",
@@ -266,7 +247,7 @@ func (s *server) exec(stdout io.Writer, canWrite bool, raddr string, environment
 		for variable, cryptedValue := range variables {
 
 			// Attempt to decrypt the encrypted value.
-			value, err := s.crypter.DecryptString(cryptedValue)
+			value, err := s.crypter.Decrypt(cryptedValue)
 			if err != nil {
 				return err
 			}
@@ -295,7 +276,7 @@ func (s *server) exec(stdout io.Writer, canWrite bool, raddr string, environment
 		}
 
 		// Attempt to encrypt the value.
-		cryptedValue, err := s.crypter.EncryptString(value)
+		cryptedValue, err := s.crypter.Encrypt([]byte(value))
 		if err != nil {
 			return err
 		}
@@ -321,7 +302,7 @@ func (s *server) exec(stdout io.Writer, canWrite bool, raddr string, environment
 	return nil
 }
 
-func (s *server) handleRequests(channel ssh.Channel, canWrite bool, raddr string, in <-chan *ssh.Request) {
+func (s *Server) handleRequests(channel ssh.Channel, canWrite bool, raddr string, in <-chan *ssh.Request) {
 
 	// Close the connection when we return.
 	defer channel.Close()
@@ -398,7 +379,7 @@ func (s *server) handleRequests(channel ssh.Channel, canWrite bool, raddr string
 	}
 }
 
-func (s *server) handleChannels(canWrite bool, raddr string, in <-chan ssh.NewChannel) {
+func (s *Server) handleChannels(canWrite bool, raddr string, in <-chan ssh.NewChannel) {
 
 	// Pull channels off the incoming channel.
 	for newChannel := range in {
@@ -422,7 +403,7 @@ func (s *server) handleChannels(canWrite bool, raddr string, in <-chan ssh.NewCh
 }
 
 // ListenAndServe starts a new SSH server listening on the given address.
-func (s *server) ListenAndServe(address string) error {
+func (s *Server) ListenAndServe(address string) error {
 
 	// Get the listeners lock.
 	s.listenersMu.Lock()
@@ -468,7 +449,7 @@ func (s *server) ListenAndServe(address string) error {
 	return nil
 }
 
-func (s *server) Stop() error {
+func (s *Server) Stop() error {
 
 	// Get the listeners lock and defer its closing.
 	s.listenersMu.Lock()

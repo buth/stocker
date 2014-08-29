@@ -111,7 +111,10 @@ func (cmd *ServerCommand) Run(args []string) {
 	}
 
 	// Create a new server using the specified Backend and Crypter.
-	server := auth.NewServer(b, c, private)
+	server, err := auth.NewServer(b, c, private)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Check if a URL was provided to pull reader keys from.
 	if cmd.ReadersURL != "" {

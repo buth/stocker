@@ -9,13 +9,14 @@ import (
 )
 
 type RegisterCommand struct {
-	Address, Group, PrivateFilepath string
-	AllEnvVars                      bool
+	Address, Group, PrivateFilepath, filename string
+	AllEnvVars                                bool
 }
 
 func (cmd *RegisterCommand) Flags(fs *flag.FlagSet) *flag.FlagSet {
 	fs.StringVar(&cmd.Address, "a", ":2022", "address of the stocker server")
 	fs.StringVar(&cmd.PrivateFilepath, "i", "", "path to an SSH private key")
+	fs.StringVar(&cmd.filename, "f", "", "filename to save SSH private key to")
 	return fs
 }
 
@@ -35,25 +36,24 @@ func (cmd *RegisterCommand) Run(args []string) {
 	// attempt to use ssh-agent.
 	client, err := auth.NewClient(auth.RegisterUser, cmd.Address, privateKey)
 	if err != nil {
-
-		log.Fatal(err.Error())
+		log.Fatal(err)
 	}
 
-	r, err := client.Run("register", nil)
+	// Send the register command. The expected response is an SSH private key.
+	key, err := client.Run("register", nil)
 	if err != nil {
-
-		log.Fatal(err.Error())
+		log.Fatal(err)
 	}
 
-	fmt.Print(r)
-	// for variable, value := range env {
+	if cmd.filename != "" {
 
-	// 	// Create an environment specific to this variable.
-	// 	runEnv := map[string]string{
-	// 		"GROUP":  cmd.Group,
-	// 		variable: value,
-	// 	}
+		// Try to write a file.
+		if err := ioutil.WriteFile(cmd.filename, []byte(key), 0600); err != nil {
+			log.Fatal(err)
+		}
+	} else {
 
-	// 	client.Run(fmt.Sprintf("export %s", variable), runEnv)
-	// }
+		// Print the string to STDOUT.
+		fmt.Print(key)
+	}
 }
