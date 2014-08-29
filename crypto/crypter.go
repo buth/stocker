@@ -165,18 +165,12 @@ func (c *Crypter) decrypt(cipherbytes []byte) ([]byte, error) {
 	return plainbytes, nil
 }
 
-// EncryptString converts plaintext to signed, base 64 encoded ciphertext by
-// encrypting the plaintext using AES-256 and prepending a Hmac SHA-512
-// signature.
-func (c *Crypter) EncryptString(plaintext string) (string, error) {
-
-	// Convert the string to a slice of bytes.
-	plainbytes := []byte(plaintext)
+func (c *Crypter) Encrypt(plainbytes []byte) ([]byte, error) {
 
 	// Encrypt the slice of plainbytes, producing cipherbytes.
 	cipherbytes, err := c.encrypt(plainbytes)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// Get the signatrue for the cipherbytes.
@@ -187,8 +181,43 @@ func (c *Crypter) EncryptString(plaintext string) (string, error) {
 	copy(messagebytes[:len(hmacbytes)], hmacbytes)
 	copy(messagebytes[len(hmacbytes):], cipherbytes)
 
+	return messagebytes, nil
+}
+
+// EncryptString converts plaintext to signed, base 64 encoded ciphertext by
+// encrypting the plaintext using AES-256 and prepending a Hmac SHA-512
+// signature.
+func (c *Crypter) EncryptString(plaintext string) (string, error) {
+
+	// Convert the string to a slice of bytes.
+	messagebytes, err := c.Encrypt([]byte(plaintext))
+	if err != nil {
+		return "", err
+	}
+
 	// Convert the result to a base 64 encoded string.
 	return base64.StdEncoding.EncodeToString(messagebytes), nil
+}
+
+func (c *Crypter) Decrypt(messagebytes []byte) ([]byte, error) {
+
+	// Check that message bytes is long enough.
+	if len(messagebytes) < 64 {
+		return nil, CrypterError{"message signature is too short"}
+	}
+
+	// Check the signature.
+	if hmac.Equal(messagebytes[:64], c.hmac(messagebytes[64:])) != true {
+		return nil, CrypterError{"invalid signature"}
+	}
+
+	// Decode the encrypted bytes.
+	plainbytes, err := c.decrypt(messagebytes[64:])
+	if err != nil {
+		return nil, err
+	}
+
+	return plainbytes, nil
 }
 
 // DecryptString converts signed, base 64 encoded ciphertext to plaintext by
@@ -202,25 +231,13 @@ func (c *Crypter) DecryptString(message string) (string, error) {
 		return "", err
 	}
 
-	// Check that message bytes is long enough.
-	if len(messagebytes) < 64 {
-		return "", CrypterError{"message signature is too short"}
-	}
-
-	// Check the signature.
-	if hmac.Equal(messagebytes[:64], c.hmac(messagebytes[64:])) != true {
-		return "", CrypterError{"invalid signature"}
-	}
-
-	// Decode the encrypted bytes.
-	plainbytes, err := c.decrypt(messagebytes[64:])
+	plainbytes, err := c.Decrypt(messagebytes)
 	if err != nil {
 		return "", err
 	}
 
 	// Convert the result to a string.
-	plaintext := string(plainbytes)
-	return plaintext, nil
+	return string(plainbytes), nil
 }
 
 // writeBase64 encodes the raw key as a base64-encoded string.
