@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"github.com/buth/stocker/backend"
 	"github.com/buth/stocker/crypto"
@@ -25,8 +24,7 @@ const (
 	ReaderUser    = `r`
 	RegisterUser  = `x`
 	SSHGroupName  = `_ssh`
-	ReadKeysKey   = `readers`
-	ReaderKeySize = 4096
+	ReaderKeySize = 2048
 )
 
 type Server struct {
@@ -41,10 +39,6 @@ type Server struct {
 	// Keys.
 	writeKeys, registerKeys     *list.List
 	writeKeysMu, registerKeysMu sync.RWMutex
-
-	// Reade keys.
-	readKeys   map[string][]byte
-	readKeysMu sync.RWMutex
 }
 
 func NewServer(b backend.Backend, c *crypto.Crypter, hostKey ssh.Signer) (*Server, error) {
@@ -61,17 +55,6 @@ func NewServer(b backend.Backend, c *crypto.Crypter, hostKey ssh.Signer) (*Serve
 	// Initialize the key lists.
 	s.writeKeys = list.New()
 	s.registerKeys = list.New()
-
-	// Get the read key map from the store.
-	readKeyEncrypted, err := s.backend.GetVariable(SSHGroupName, ReadKeysKey)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal the read key.
-	if err := s.crypter.Unmarshal(readKeyEncrypted, &s.readKeys); err != nil {
-		return nil, err
-	}
 
 	// Build a new certificate checker.
 	certChecker := &ssh.CertChecker{
@@ -161,19 +144,23 @@ func (s *Server) checkUserKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Pe
 			return nil, err
 		}
 
-		// Get the lock.
-		s.readKeysMu.RLock()
-		defer s.readKeysMu.RUnlock()
+		pubKeyEncrypted, err := s.backend.GetVariable(SSHGroupName, host)
+		if err != nil {
+			return nil, err
+		}
 
-		// Get the read key for this host, and try to match it.
-		readKey, ok := s.readKeys[host]
-		if ok && bytes.Equal(readKey, key.Marshal()) {
+		pubKey, err := s.crypter.Decrypt(pubKeyEncrypted)
+		if err != nil {
+			return nil, err
+		}
+
+		if bytes.Equal(pubKey, key.Marshal()) {
 			return &ssh.Permissions{}, nil
 		}
 	}
 
 	// The default case is to return an error.
-	return nil, errors.New("unauthorized")
+	return nil, ServerError{"unauthorized"}
 }
 
 func (s *Server) exec(stdout io.Writer, canWrite bool, raddr string, environment map[string]string, commandString string) error {
@@ -212,22 +199,14 @@ func (s *Server) exec(stdout io.Writer, canWrite bool, raddr string, environment
 			return err
 		}
 
-		s.readKeysMu.Lock()
-
-		s.readKeys[host] = pubKey.Marshal()
-
-		readKeysEncrypted, err := s.crypter.Marshal(s.readKeys)
+		pubKeyEncrypted, err := s.crypter.Encrypt(pubKey.Marshal())
 		if err != nil {
-			s.readKeysMu.Unlock()
 			return err
 		}
 
-		if err := s.backend.SetVariable(SSHGroupName, ReadKeysKey, readKeysEncrypted); err != nil {
-			s.readKeysMu.Unlock()
+		if err := s.backend.SetVariable(SSHGroupName, host, pubKeyEncrypted); err != nil {
 			return err
 		}
-
-		s.readKeysMu.Unlock()
 
 		privKeyPem := &pem.Block{
 			Type:  "RSA PRIVATE KEY",

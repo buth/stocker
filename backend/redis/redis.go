@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/garyburd/redigo/redis"
 	"log"
+	"time"
 )
 
 const (
@@ -74,6 +75,17 @@ func (r *redisBackend) RemoveVariable(group, variable string) error {
 
 	// Run the DEL command and return any error.
 	_, err := conn.Do("HDEL", r.Key(group), variable)
+	return err
+}
+
+func (r *redisBackend) SetGroupTTL(group string, ttl time.Duration) error {
+
+	// Get a connection from the pool and defer its closing.
+	conn := r.pool.Get()
+	defer conn.Close()
+
+	// Run the PEXPIRE command and return any error.
+	_, err := conn.Do("PEXPIRE", r.Key(group), int(ttl.Seconds()*1000))
 	return err
 }
 
