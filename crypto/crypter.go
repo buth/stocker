@@ -9,6 +9,7 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"fmt"
+	"github.com/vmihailenco/msgpack"
 	"io"
 	"os"
 )
@@ -186,19 +187,29 @@ func (c *Crypter) Encrypt(plainbytes []byte) ([]byte, error) {
 	return messagebytes, nil
 }
 
-// EncryptString converts plaintext to signed, base 64 encoded ciphertext by
-// encrypting the plaintext using AES-256 and prepending a Hmac SHA-512
-// signature.
-func (c *Crypter) EncryptString(plaintext string) (string, error) {
+func (c *Crypter) Marshal(v ...interface{}) ([]byte, error) {
 
-	// Convert the string to a slice of bytes.
-	messagebytes, err := c.Encrypt([]byte(plaintext))
+	plainbytes, err := msgpack.Marshal(v...)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Convert the result to a base 64 encoded string.
-	return base64.StdEncoding.EncodeToString(messagebytes), nil
+	messagebytes, err := c.Encrypt(plainbytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return messagebytes, nil
+}
+
+func (c *Crypter) Unmarshal(messagebytes []byte, v ...interface{}) error {
+
+	plainbytes, err := c.Decrypt(messagebytes)
+	if err != nil {
+		return err
+	}
+
+	return msgpack.Unmarshal(plainbytes, v...)
 }
 
 // Decrypt converts signed slice of cipherbytes to plainbytes by first
@@ -223,26 +234,6 @@ func (c *Crypter) Decrypt(messagebytes []byte) ([]byte, error) {
 	}
 
 	return plainbytes, nil
-}
-
-// DecryptString converts signed, base 64 encoded ciphertext to plaintext by
-// first validating a prepended Hmac SHA-512 signature and then decrypting the
-// remaining message using AES-256.
-func (c *Crypter) DecryptString(message string) (string, error) {
-
-	// Decode the base 64 string.
-	messagebytes, err := base64.StdEncoding.DecodeString(message)
-	if err != nil {
-		return "", err
-	}
-
-	plainbytes, err := c.Decrypt(messagebytes)
-	if err != nil {
-		return "", err
-	}
-
-	// Convert the result to a string.
-	return string(plainbytes), nil
 }
 
 // writeBase64 encodes the raw key as a base64-encoded string.

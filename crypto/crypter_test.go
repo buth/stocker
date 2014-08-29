@@ -8,33 +8,33 @@ import (
 	"testing"
 )
 
-func TestEncodeString(t *testing.T) {
+func TestEncode(t *testing.T) {
 
 	c, err := NewRandomCrypter()
 	if err != nil {
 		t.Error(err)
 	}
 
-	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
-	fmt.Println(originaltext)
+	originalbytes := []byte("Test message !@#$%^&*()_1234567890{}[].")
+	fmt.Println(originalbytes)
 
-	ciphertext, err := c.EncryptString(originaltext)
+	cipherbytes, err := c.Encrypt(originalbytes)
 	if err != nil {
 		t.Error(err)
 	}
 
-	fmt.Println(ciphertext)
+	fmt.Println(cipherbytes)
 
-	if ciphertext == originaltext {
-		t.Error("encoding the text didn't work!")
+	if bytes.Equal(cipherbytes, originalbytes) {
+		t.Error("encoding the bytes didn't work!")
 	}
 
-	plaintext, err := c.DecryptString(ciphertext)
+	plainbytes, err := c.Decrypt(cipherbytes)
 	if err != nil {
 		t.Error(err)
 	}
-	if plaintext != originaltext {
-		t.Errorf("\n%X\n%X\ndecoded text did not match!", originaltext, plaintext)
+	if !bytes.Equal(plainbytes, originalbytes) {
+		t.Errorf("\n%X\n%X\ndecoded bytes did not match!", originalbytes, plainbytes)
 	}
 }
 
@@ -55,24 +55,24 @@ func TestSeperateEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
-	fmt.Println(originaltext)
+	originalbytes := []byte("Test message !@#$%^&*()_1234567890{}[].")
+	fmt.Println(originalbytes)
 
-	ciphertext1, err := c1.EncryptString(originaltext)
+	cipherbytes1, err := c1.Encrypt(originalbytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Println(ciphertext1)
+	fmt.Println(cipherbytes1)
 
-	ciphertext2, err := c2.EncryptString(originaltext)
+	cipherbytes2, err := c2.Encrypt(originalbytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Println(ciphertext2)
+	fmt.Println(cipherbytes2)
 
-	if ciphertext1 == ciphertext2 {
+	if bytes.Equal(cipherbytes1, cipherbytes2) {
 		t.Error("seperate encodings of the same string matched!")
 	}
 }
@@ -84,29 +84,29 @@ func TestRepeatedEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
-	fmt.Println(originaltext)
+	originalbytes := []byte("Test message !@#$%^&*()_1234567890{}[].")
+	fmt.Println(originalbytes)
 
-	ciphertext1, err := c.EncryptString(originaltext)
+	cipherbytes1, err := c.Encrypt(originalbytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Println(ciphertext1)
+	fmt.Println(cipherbytes1)
 
-	ciphertext2, err := c.EncryptString(originaltext)
+	cipherbytes2, err := c.Encrypt(originalbytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Println(ciphertext2)
+	fmt.Println(cipherbytes2)
 
-	if ciphertext1 == ciphertext2 {
+	if bytes.Equal(cipherbytes1, cipherbytes2) {
 		t.Error("repeated encodings of the same string matched!")
 	}
 }
 
-func BenchmarkEncodeString(b *testing.B) {
+func BenchmarkEncode(b *testing.B) {
 	b.StopTimer()
 
 	c, err := NewRandomCrypter()
@@ -114,19 +114,19 @@ func BenchmarkEncodeString(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
+	originalbytes := []byte("Test message !@#$%^&*()_1234567890{}[].")
 
 	for i := 0; i < b.N; i++ {
 		b.StartTimer()
-		c.EncryptString(originaltext)
+		c.Encrypt(originalbytes)
 		b.StopTimer()
 	}
 }
 
-func BenchmarkEncodeStringCold(b *testing.B) {
+func BenchmarkEncodeCold(b *testing.B) {
 	b.StopTimer()
 
-	originaltext := "Test message !@#$%^&*()_1234567890{}[]."
+	originalbytes := []byte("Test message !@#$%^&*()_1234567890{}[].")
 
 	for i := 0; i < b.N; i++ {
 		c, err := NewRandomCrypter()
@@ -134,7 +134,7 @@ func BenchmarkEncodeStringCold(b *testing.B) {
 			b.Fatal(err)
 		}
 		b.StartTimer()
-		c.EncryptString(originaltext)
+		c.Encrypt(originalbytes)
 		b.StopTimer()
 	}
 }
