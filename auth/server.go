@@ -17,14 +17,16 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
-	WriterUser    = `w`
-	ReaderUser    = `r`
-	RegisterUser  = `x`
-	SSHGroupName  = `_ssh`
-	ReaderKeySize = 2048
+	WriterUser     = `w`
+	ReaderUser     = `r`
+	RegisterUser   = `x`
+	SSHGroupName   = `_keys`
+	ReaderDuration = time.Hour * 168 // One week.
+	ReaderKeySize  = 2048
 )
 
 type Server struct {
@@ -123,40 +125,40 @@ func (s *Server) matchRegisterKey(key ssh.PublicKey) bool {
 // the user indicated in the SSH connection meta-data.
 func (s *Server) checkUserKey(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 
-	// Check for writers.
-	switch conn.User() {
-
-	case WriterUser:
+	// Writers must match one of the write keys.
+	if conn.User() == WriterUser {
 		if s.matchWriteKey(key) {
 			return &ssh.Permissions{}, nil
 		}
+		return nil, ServerError{"unauthorized"}
+	}
 
-	case RegisterUser:
-		if s.matchRegisterKey(key) {
-			return &ssh.Permissions{}, nil
-		}
+	// Registerers can match the registration key.
+	if conn.User() == RegisterUser && s.matchRegisterKey(key) {
+		return &ssh.Permissions{}, nil
+	}
 
-	case ReaderUser:
+	// Parse out the host.
+	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+	if err != nil {
+		return nil, err
+	}
 
-		// Parse out the host.
-		host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
-		if err != nil {
-			return nil, err
-		}
+	// Get the encrypted public key from the backend.
+	pubKeyEncrypted, err := s.backend.GetVariable(SSHGroupName, host)
+	if err != nil {
+		return nil, err
+	}
 
-		pubKeyEncrypted, err := s.backend.GetVariable(SSHGroupName, host)
-		if err != nil {
-			return nil, err
-		}
+	// Decrypt the public key.
+	pubKey, err := s.crypter.Decrypt(pubKeyEncrypted)
+	if err != nil {
+		return nil, err
+	}
 
-		pubKey, err := s.crypter.Decrypt(pubKeyEncrypted)
-		if err != nil {
-			return nil, err
-		}
-
-		if bytes.Equal(pubKey, key.Marshal()) {
-			return &ssh.Permissions{}, nil
-		}
+	// Check if it matches.
+	if bytes.Equal(pubKey, key.Marshal()) {
+		return &ssh.Permissions{}, nil
 	}
 
 	// The default case is to return an error.
@@ -204,7 +206,7 @@ func (s *Server) exec(stdout io.Writer, canWrite bool, raddr string, environment
 			return err
 		}
 
-		if err := s.backend.SetVariable(SSHGroupName, host, pubKeyEncrypted); err != nil {
+		if err := s.backend.SetVariableTTL(SSHGroupName, host, pubKeyEncrypted, ReaderDuration); err != nil {
 			return err
 		}
 

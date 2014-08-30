@@ -10,8 +10,8 @@ import (
 type Backend interface {
 	GetVariable(group, variable string) ([]byte, error)
 	SetVariable(group, variable string, value []byte) error
+	SetVariableTTL(group, variable string, value []byte, ttl time.Duration) error
 	RemoveVariable(group, variable string) error
-	SetGroupTTL(group string, ttl time.Duration) error
 	GetGroup(group string) (map[string][]byte, error)
 	RemoveGroup(group string) error
 }

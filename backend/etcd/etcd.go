@@ -53,19 +53,22 @@ func (e *EtcdBackend) GetVariable(group, variable string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(response.Node.Value)
 }
 
-func (e *EtcdBackend) SetVariable(group, variable string, value []byte) error {
+func (e *EtcdBackend) setVariable(group, variable string, value []byte, ttl uint64) error {
 	encodedValue := base64.StdEncoding.EncodeToString(value)
-	_, err := e.client.Set(e.keyVariable(group, variable), encodedValue, 0)
+	_, err := e.client.Set(e.keyVariable(group, variable), encodedValue, ttl)
 	return err
+}
+
+func (e *EtcdBackend) SetVariable(group, variable string, value []byte) error {
+	return e.setVariable(group, variable, value, 0)
+}
+
+func (e *EtcdBackend) SetVariableTTL(group, variable string, value []byte, ttl time.Duration) error {
+	return e.setVariable(group, variable, value, uint64(ttl.Seconds()))
 }
 
 func (e *EtcdBackend) RemoveVariable(group, variable string) error {
 	_, err := e.client.Delete(e.keyVariable(group, variable), false)
-	return err
-}
-
-func (e *EtcdBackend) SetGroupTTL(group string, ttl time.Duration) error {
-	_, err := e.client.UpdateDir(e.keyGroup(group), uint64(ttl.Seconds()))
 	return err
 }
 
